@@ -14,12 +14,16 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Install MySQL Portable
+    - name: Install MySQL Portable from alternative source
       run: |
-        Write-Host "=== Installing MySQL Portable ==="
+        Write-Host "=== Installing MySQL Portable from alternative source ==="
         
-        # Télécharger MySQL 8.0.35 portable
-        Invoke-WebRequest -Uri "https://downloads.mysql.com/archives/get/p/23/file/mysql-8.0.35-winx64.zip" -OutFile "mysql.zip"
+        # Utiliser une source alternative pour MySQL
+        $mysqlUrl = "https://repo.mysql.com/archives/mysql-8.0/mysql-8.0.35-winx64.zip"
+        
+        # Télécharger MySQL
+        Write-Host "Downloading MySQL from: $mysqlUrl"
+        Invoke-WebRequest -Uri $mysqlUrl -OutFile "mysql.zip"
         
         # Créer le dossier d'installation
         New-Item -ItemType Directory -Path "C:\mysql" -Force
@@ -29,7 +33,7 @@ jobs:
         Move-Item -Path "C:\mysql-temp\mysql-8.0.35-winx64\*" -Destination "C:\mysql\" -Force
         Remove-Item -Path "C:\mysql-temp" -Recurse -Force
         
-        Write-Host "=== MySQL Portable extracted ==="
+        Write-Host "=== MySQL Portable extracted successfully ==="
       shell: pwsh
 
     - name: Initialize and Start MySQL
@@ -44,9 +48,9 @@ jobs:
         
         # Attendre que MySQL soit opérationnel
         Write-Host "Waiting for MySQL to start..."
-        Start-Sleep -Seconds 10
+        Start-Sleep -Seconds 15
         
-        Write-Host "=== MySQL started ==="
+        Write-Host "=== MySQL started successfully ==="
       shell: pwsh
 
     - name: Configure Database
