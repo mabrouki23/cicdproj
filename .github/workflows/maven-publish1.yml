@@ -1,4 +1,4 @@
-name: Build Full Stack Maven Project
+name: Build Backend Only
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
-  build:
+  build-backend:
     runs-on: ubuntu-latest
     
     services:
@@ -24,23 +24,6 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Debug complete structure
-      run: |
-        echo "=== Structure complète du dépôt ==="
-        find . -name "pom.xml" -type f
-        echo "=== Contenu du répertoire racine ==="
-        ls -la
-        echo "=== Contenu de school-manager-multi ==="
-        ls -la school-manager-multi/
-        echo "=== Vérification du POM ==="
-        if [ -f "school-manager-multi/pom.xml" ]; then
-          echo "✅ POM trouvé dans school-manager-multi/"
-        elif [ -f "pom.xml" ]; then
-          echo "✅ POM trouvé à la racine"
-        else
-          echo "❌ Aucun POM trouvé"
-        fi
-
     - name: Set up JDK 21
       uses: actions/setup-java@v4
       with:
@@ -48,20 +31,10 @@ jobs:
         distribution: 'temurin'
         cache: 'maven'
 
-    - name: Build from correct directory
+    - name: Build only backend module (skip frontend)
       run: |
-        # Se déplacer dans le bon répertoire
-        if [ -f "school-manager-multi/pom.xml" ]; then
-          cd school-manager-multi
-          echo "Building from school-manager-multi directory"
-        elif [ -f "pom.xml" ]; then
-          echo "Building from root directory"
-        else
-          echo "ERROR: No pom.xml found!"
-          exit 1
-        fi
-        
-        mvn clean package -DskipTests=false
+        cd school-manager-multi
+        mvn clean package -pl backend -am -DskipTests=false -Dskip.frontend.build=true
       env:
         SPRING_DATASOURCE_URL: jdbc:mysql://localhost:3306/schooldb
         SPRING_DATASOURCE_USERNAME: root
@@ -71,7 +44,5 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: backend-jar
-        path: |
-          school-manager-multi/backend/target/*.jar
-          backend/target/*.jar
+        path: school-manager-multi/backend/target/*.jar
         retention-days: 7
