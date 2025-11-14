@@ -31,15 +31,10 @@ jobs:
         distribution: 'temurin'
         cache: 'maven'
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-        cache: 'npm'
-
     - name: Build complete project with Maven
       run: |
         echo "Building full project from: $(pwd)"
+        echo "Project structure:"
         ls -la
         mvn clean package -DskipTests=false
       env:
@@ -47,11 +42,9 @@ jobs:
         SPRING_DATASOURCE_USERNAME: root
         SPRING_DATASOURCE_PASSWORD: ""
 
-    - name: Upload artifacts
+    - name: Upload JAR artifact
       uses: actions/upload-artifact@v4
       with:
-        name: fullstack-build
-        path: |
-          target/*.jar
-          target/classes/static/  # Frontend built par Maven
+        name: application-jar
+        path: target/*.jar
         retention-days: 7
