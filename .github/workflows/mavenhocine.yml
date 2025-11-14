@@ -1,4 +1,4 @@
-name: Build Full Stack Application
+name: Build Full Stack Application - Windows
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest  # Changé pour Windows
     
     services:
       mysql:
@@ -31,6 +31,17 @@ jobs:
         cache: 'npm'
         cache-dependency-path: 'school-manager-multi/frontend/package-lock.json'
 
+    - name: Build Angular frontend with Maven (Windows)
+      run: |
+        Write-Host "=== Building Angular Frontend with Maven ==="
+        cd school-manager-multi
+        
+        # Build du frontend avec Maven - cmd fonctionne sur Windows
+        mvn clean compile -pl frontend -DskipTests=true
+        
+        Write-Host "=== Frontend build completed ==="
+      shell: pwsh
+
     - name: Set up JDK 21
       uses: actions/setup-java@v4
       with:
@@ -38,47 +49,45 @@ jobs:
         distribution: 'temurin'
         cache: 'maven'
 
-    - name: Build complete fullstack application with Maven
+    - name: Build complete fullstack application
       run: |
-        echo "=== Building Full Stack Application ==="
+        Write-Host "=== Building Full Stack Application ==="
         cd school-manager-multi
         
-        # Build complet avec Maven qui gère Angular automatiquement
+        # Build complet - Maven va intégrer Angular automatiquement
         mvn clean package -DskipTests=false
         
-        echo "=== Build completed successfully ==="
+        Write-Host "=== Full stack build completed ==="
       env:
         SPRING_DATASOURCE_URL: jdbc:mysql://localhost:3306/schooldb
         SPRING_DATASOURCE_USERNAME: root
         SPRING_DATASOURCE_PASSWORD: ""
+      shell: pwsh
 
     - name: Verify JAR contains Angular files
       run: |
-        echo "=== Verifying Angular files in JAR ==="
+        Write-Host "=== Verifying Angular files in JAR ==="
         cd school-manager-multi/backend/target
         
-        # Lister le contenu du JAR pour vérifier les fichiers Angular
-        echo "JAR content (Angular files):"
-        jar tf *.jar | grep -E "(index.html|static/|assets/|main.js|styles.css)" | head -20 || echo "No Angular files found with these patterns"
+        # Lister le contenu du JAR
+        jar tf *.jar | Select-String -Pattern "(index.html|static/|assets/)" | Select-Object -First 10
         
-        # Vérifier la taille du JAR
-        echo "JAR size:"
-        ls -lh *.jar
-        
-        echo "=== Verification completed ==="
+        Write-Host "=== JAR File ==="
+        Get-ChildItem *.jar | Format-Table Name, Length -AutoSize
+      shell: pwsh
 
     - name: Upload Full Stack JAR Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: school-manager-fullstack
+        name: school-manager-fullstack-windows
         path: school-manager-multi/backend/target/*.jar
         retention-days: 30
 
-    - name: Display build summary
+    - name: Build success message
       run: |
-        echo "=== BUILD SUMMARY ==="
-        echo "✅ Full stack application built successfully"
-        echo "📦 JAR file location: school-manager-multi/backend/target/"
-        echo "🌐 Contains: Spring Boot Backend + Angular Frontend"
-        echo "📥 Download artifact: school-manager-fullstack"
-        echo "====================="
+        Write-Host "🎉 APPLICATION BUILD SUCCESSFUL ON WINDOWS!" -ForegroundColor Green
+        Write-Host "📦 JAR File: Spring Boot + Angular intégrés"
+        Write-Host "🖥️  Environment: Windows"
+        Write-Host "⚙️  Build Tool: Maven avec exec-maven-plugin"
+        Write-Host "⬇️  Download: school-manager-fullstack-windows artifact"
+      shell: pwsh
