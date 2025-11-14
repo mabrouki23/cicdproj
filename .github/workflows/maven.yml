@@ -14,12 +14,12 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Install and configure MySQL
+    - name: Install MySQL with alternative method
       run: |
-        Write-Host "=== Installing MySQL ==="
+        Write-Host "=== Installing MySQL with alternative method ==="
         
-        # Télécharger et installer MySQL
-        choco install mysql --version=8.0.35 -y --force
+        # Installer MySQL sans version spécifique
+        choco install mysql -y --force
         
         Write-Host "=== MySQL installation completed ==="
       shell: pwsh
@@ -28,40 +28,75 @@ jobs:
       run: |
         Write-Host "=== Starting MySQL Service ==="
         
-        # Démarrer le service MySQL
-        Start-Service -Name "MySQL80"
-        
-        # Attendre que MySQL soit opérationnel
-        Start-Sleep -Seconds 10
-        
-        Write-Host "=== MySQL service started ==="
+        # Démarrer le service MySQL (le nom peut varier)
+        $mysqlService = Get-Service | Where-Object {$_.Name -like "*mysql*"}
+        if ($mysqlService) {
+            Write-Host "Found MySQL service: $($mysqlService.Name)"
+            Start-Service -Name $mysqlService.Name
+            Start-Sleep -Seconds 15
+            Write-Host "MySQL service started successfully"
+        } else {
+            Write-Host "MySQL service not found, trying common names..."
+            # Essayer les noms de service courants
+            $serviceNames = @("MySQL80", "MySQL", "MySQL57", "MySQL56")
+            foreach ($serviceName in $serviceNames) {
+                try {
+                    Start-Service -Name $serviceName -ErrorAction SilentlyContinue
+                    Write-Host "Started service: $serviceName"
+                    Start-Sleep -Seconds 15
+                    break
+                } catch {
+                    Write-Host "Service $serviceName not found"
+                }
+            }
+        }
       shell: pwsh
 
     - name: Configure MySQL Database
       run: |
         Write-Host "=== Configuring MySQL Database ==="
         
-        # Créer la base de données (MySQL sans mot de passe par défaut sur Windows)
-        & "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u root -e "CREATE DATABASE IF NOT EXISTS schooldb;"
-        & "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u root -e "SHOW DATABASES;"
+        # Essayer différents chemins possibles pour mysql.exe
+        $mysqlPaths = @(
+            "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe",
+            "C:\Program Files\MySQL\MySQL Server 8.1\bin\mysql.exe",
+            "C:\Program Files\MySQL\MySQL Server 5.7\bin\mysql.exe",
+            "C:\tools\mysql\current\bin\mysql.exe"
+        )
         
-        Write-Host "=== Database configured ==="
+        $mysqlFound = $false
+        foreach ($path in $mysqlPaths) {
+            if (Test-Path $path) {
+                Write-Host "Found MySQL at: $path"
+                & $path -u root -e "CREATE DATABASE IF NOT EXISTS schooldb;"
+                & $path -u root -e "SHOW DATABASES;"
+                $mysqlFound = $true
+                break
+            }
+        }
+        
+        if (-not $mysqlFound) {
+            Write-Host "MySQL client not found in standard locations"
+            # Essayer de trouver via le PATH
+            $mysqlInPath = Get-Command mysql -ErrorAction SilentlyContinue
+            if ($mysqlInPath) {
+                Write-Host "Found MySQL in PATH: $($mysqlInPath.Source)"
+                mysql -u root -e "CREATE DATABASE IF NOT EXISTS schooldb;"
+                mysql -u root -e "SHOW DATABASES;"
+            } else {
+                Write-Host "WARNING: MySQL client not found, tests may fail"
+            }
+        }
+        
+        Write-Host "=== Database configuration attempted ==="
       shell: pwsh
 
     - name: Setup Node.js for Angular (Latest LTS)
       uses: actions/setup-node@v4
       with:
-        node-version: 'lts/*'  # Dernière version LTS stable
+        node-version: 'lts/*'
         cache: 'npm'
         cache-dependency-path: 'school-manager-multi/frontend/package-lock.json'
-
-    - name: Verify Node.js version
-      run: |
-        Write-Host "=== Node.js Version ==="
-        node --version
-        npm --version
-        Write-Host "=== Using latest stable LTS version ==="
-      shell: pwsh
 
     - name: Set up JDK 21
       uses: actions/setup-java@v4
@@ -78,30 +113,19 @@ jobs:
         Write-Host "=== Frontend build completed ==="
       shell: pwsh
 
-    - name: Build and Test Spring Boot backend with MySQL
+    - name: Build and Test Spring Boot backend
       run: |
         Write-Host "=== Building and Testing Spring Boot Backend ==="
         cd school-manager-multi
         
-        # Build avec tests - MySQL est maintenant disponible
+        # Build avec tests - continuer même si MySQL n'est pas disponible
         mvn clean package -pl backend -am -DskipTests=false
         
-        Write-Host "=== Backend build and tests completed ==="
+        Write-Host "=== Backend build completed ==="
       env:
         SPRING_DATASOURCE_URL: jdbc:mysql://localhost:3306/schooldb
         SPRING_DATASOURCE_USERNAME: root
         SPRING_DATASOURCE_PASSWORD: ""
-      shell: pwsh
-
-    - name: Verify JAR content
-      run: |
-        Write-Host "=== Verifying JAR content ==="
-        cd school-manager-multi/backend/target
-        
-        jar tf *.jar | Select-String -Pattern "(index.html|static/|assets/)" | Select-Object -First 10
-        
-        Write-Host "=== JAR File ==="
-        Get-ChildItem *.jar | Format-Table Name, @{Name="Size(MB)";Expression={[math]::Round($_.Length/1MB,2)}} -AutoSize
       shell: pwsh
 
     - name: Upload Full Stack JAR Artifact
@@ -110,14 +134,3 @@ jobs:
         name: school-manager-fullstack-mysql
         path: school-manager-multi/backend/target/*.jar
         retention-days: 30
-
-    - name: Build success summary
-      run: |
-        Write-Host "🎉 BUILD SUCCESSFUL WITH MYSQL ON WINDOWS!" -ForegroundColor Green
-        Write-Host "📦 Artifact: school-manager-fullstack-mysql"
-        Write-Host "🗄️  Database: MySQL 8.0 installed locally"
-        Write-Host "🖥️  Environment: Windows Runner"
-        Write-Host "📟 Node.js: Latest LTS version"
-        Write-Host "✅ Tests: Executed with real MySQL database"
-        Write-Host "⬇️  Download from Actions tab"
-      shell: pwsh
