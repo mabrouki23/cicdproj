@@ -31,101 +31,106 @@ jobs:
         cache: 'npm'
         cache-dependency-path: 'school-manager-multi/frontend/package-lock.json'
 
-    - name: Build Angular with Production Configuration
+    - name: Build Angular
       run: |
         echo "=== BUILD ANGULAR ==="
         cd school-manager-multi/frontend
-        
-        # Clean install
         npm ci
-        
-        # Build avec configuration production
-        npm run build -- --configuration=production
-        
-        # Vérifier le contenu du build
-        echo "=== CONTENU DU BUILD ANGULAR ==="
-        find dist/ -type f | head -20
-        echo "=== STRUCTURE ==="
-        ls -la dist/
+        npm run build
+        echo "✅ Angular build completed"
       shell: bash
 
-    - name: Diagnostic - Check Angular Build Structure
+    - name: Clean Backend Static
       run: |
-        echo "=== DIAGNOSTIC STRUCTURE ANGULAR ==="
-        cd school-manager-multi/frontend
-        
-        # Vérifier la structure exacte
-        if [ -d "dist/frontend" ]; then
-          echo "📁 Structure: dist/frontend/"
-          ls -la dist/frontend/
-          ANGULAR_DIST_PATH="dist/frontend"
-        elif [ -d "dist" ]; then
-          echo "📁 Structure: dist/"
-          ls -la dist/
-          ANGULAR_DIST_PATH="dist"
-        else
-          echo "❌ Aucun dossier dist trouvé!"
-          find . -name "dist" -type d
-        fi
-        
-        # Sauvegarder le chemin pour les étapes suivantes
-        echo "ANGULAR_DIST_PATH=$ANGULAR_DIST_PATH" >> $GITHUB_ENV
-      shell: bash
-
-    - name: Clean and Prepare Backend Static
-      run: |
-        echo "=== NETTOYAGE DU DOSSIER STATIC ==="
+        echo "=== CLEAN STATIC DIRECTORY ==="
         cd school-manager-multi/backend
-        
-        # Supprimer complètement le dossier static
         rm -rf src/main/resources/static
-        
-        # Recréer le dossier
         mkdir -p src/main/resources/static
-        
-        echo "✅ Dossier static nettoyé et prêt"
       shell: bash
 
-    - name: Copy Angular to Backend (Correct Structure)
+    - name: Copy Angular to Backend
       run: |
-        echo "=== COPIE ANGULAR VERS SPRING BOOT ==="
-        cd school-manager-multi
+        echo "=== COPY ANGULAR TO SPRING BOOT ==="
         
         # Vérifier la structure Angular
-        echo "Structure Angular:"
-        ls -la frontend/dist/
+        echo "Angular dist content:"
+        ls -la school-manager-multi/frontend/dist/
         
-        # Copier selon la structure détectée
-        if [ -d "frontend/dist/frontend" ]; then
-          echo "📥 Copie depuis: frontend/dist/frontend/"
-          cp -r frontend/dist/frontend/* backend/src/main/resources/static/
-        else
-          echo "📥 Copie depuis: frontend/dist/"
-          cp -r frontend/dist/* backend/src/main/resources/static/
-        fi
+        # Copier récursivement
+        cp -r school-manager-multi/frontend/dist/* school-manager-multi/backend/src/main/resources/static/
         
-        # Vérifier la copie
-        echo "✅ Contenu après copie:"
-        find backend/src/main/resources/static/ -type f | head -20
-        ls -la backend/src/main/resources/static/
+        echo "Backend static content after copy:"
+        ls -la school-manager-multi/backend/src/main/resources/static/
       shell: bash
 
-    - name: Verify Static Content Before Build
+    - name: Add Spring Boot Static Configuration
       run: |
-        echo "=== VÉRIFICATION FINALE AVANT BUILD ==="
+        echo "=== ADDING SPRING BOOT STATIC CONFIG ==="
         cd school-manager-multi/backend
         
-        echo "📁 Contenu de src/main/resources/static/:"
-        find src/main/resources/static/ -name "*.html" -o -name "*.js" -o -name "*.css" | head -20
+        # Créer le fichier de configuration pour servir les statics
+        mkdir -p src/main/resources
         
-        echo "🔍 Présence de index.html:"
+        cat > src/main/resources/application.properties << 'EOF'
+        # Server Configuration
+        server.port=8080
+        
+        # Static Resources Configuration
+        spring.web.resources.static-locations=classpath:/static/
+        spring.mvc.static-path-pattern=/**
+        
+        # MySQL Configuration
+        spring.datasource.url=jdbc:mysql://localhost:3306/schooldb
+        spring.datasource.username=root
+        spring.datasource.password=
+        
+        # JPA Configuration
+        spring.jpa.hibernate.ddl-auto=update
+        spring.jpa.show-sql=true
+        spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQLDialect
+        
+        # Frontend Routing (SPA support)
+        spring.web.resources.add-mappings=true
+        spring.web.resources.cache.period=3600
+        EOF
+        
+        echo "✅ Spring Boot configuration added"
+        
+        # Vérifier que index.html est présent
         if [ -f "src/main/resources/static/index.html" ]; then
-          echo "✅ index.html trouvé!"
-          ls -la src/main/resources/static/index.html
+          echo "✅ index.html found in static directory"
         else
-          echo "❌ index.html NON TROUVÉ!"
-          find src/main/resources/static/ -name "index.html"
+          echo "❌ index.html NOT found!"
+          find src/main/resources/static/ -name "*.html"
         fi
+      shell: bash
+
+    - name: Add Spring Boot Controller for SPA
+      run: |
+        echo "=== ADDING SPA CONTROLLER ==="
+        cd school-manager-multi/backend
+        
+        # Créer le dossier pour le controller
+        mkdir -p src/main/java/com/hocine/controller
+        
+        # Créer le controller pour rediriger vers index.html
+        cat > src/main/java/com/hocine/controller/SpaController.java << 'EOF'
+        package com.hocine.controller;
+        
+        import org.springframework.stereotype.Controller;
+        import org.springframework.web.bind.annotation.RequestMapping;
+        
+        @Controller
+        public class SpaController {
+            
+            @RequestMapping(value = "/{path:[^\\.]*}")
+            public String redirect() {
+                return "forward:/index.html";
+            }
+        }
+        EOF
+        
+        echo "✅ SPA Controller added"
       shell: bash
 
     - name: Set up JDK 21
@@ -137,13 +142,16 @@ jobs:
 
     - name: Build Spring Boot Backend
       run: |
-        echo "=== BUILD SPRING BOOT ==="
+        echo "=== BUILDING SPRING BOOT ==="
         cd school-manager-multi
         
-        # Build avec vérification
-        mvn clean package -pl backend -am -DskipTests=false -Dskip.frontend.build=true
+        # Compiler d'abord pour vérifier les erreurs
+        mvn clean compile -pl backend -am
         
-        echo "✅ Build Spring Boot terminé"
+        # Puis package
+        mvn package -pl backend -am -DskipTests=false -Dskip.frontend.build=true
+        
+        echo "✅ Spring Boot build completed"
       env:
         SPRING_DATASOURCE_URL: jdbc:mysql://localhost:3306/schooldb
         SPRING_DATASOURCE_USERNAME: root
@@ -152,20 +160,43 @@ jobs:
 
     - name: Verify JAR Content
       run: |
-        echo "=== VÉRIFICATION CONTENU JAR ==="
+        echo "=== VERIFYING JAR CONTENT ==="
         cd school-manager-multi/backend/target
         
-        JAR_FILE=$(ls *.jar | head -1)
-        echo "📦 JAR: $JAR_FILE"
+        JAR_FILE=$(ls *.jar)
+        echo "JAR file: $JAR_FILE"
         
-        echo "🔍 Recherche des fichiers Angular:"
-        jar tf $JAR_FILE | grep -E "BOOT-INF/classes/static/" | head -20
+        echo "Static files in JAR:"
+        jar tf $JAR_FILE | grep "BOOT-INF/classes/static/" | head -20
         
-        echo "🔍 Recherche de index.html:"
-        jar tf $JAR_FILE | grep "index.html" || echo "❌ index.html non trouvé dans JAR"
+        echo "Controller in JAR:"
+        jar tf $JAR_FILE | grep "SpaController"
         
-        echo "🔍 Liste complète static:"
-        jar tf $JAR_FILE | grep "BOOT-INF/classes/static/" | wc -l
+        echo "Configuration in JAR:"
+        jar tf $JAR_FILE | grep "application.properties"
+      shell: bash
+
+    - name: Test Application
+      run: |
+        echo "=== TESTING APPLICATION ==="
+        cd school-manager-multi/backend/target
+        
+        # Démarrer l'application
+        java -jar *.jar &
+        APP_PID=$!
+        
+        # Attendre le démarrage
+        echo "Waiting for app to start..."
+        sleep 30
+        
+        # Tester les endpoints
+        echo "Testing endpoints:"
+        curl -v http://localhost:8080/ || echo "Failed to access /"
+        curl -v http://localhost:8080/index.html || echo "Failed to access /index.html"
+        
+        # Arrêter l'application
+        kill $APP_PID
+        echo "✅ Application test completed"
       shell: bash
 
     - name: Upload JAR Artifact
@@ -174,24 +205,3 @@ jobs:
         name: school-manager-fullstack
         path: school-manager-multi/backend/target/*.jar
         retention-days: 30
-
-    - name: Test the Application (Optional)
-      run: |
-        echo "=== TEST DE L'APPLICATION ==="
-        cd school-manager-multi/backend/target
-        
-        # Démarrer l'application en arrière-plan
-        java -jar *.jar &
-        APP_PID=$!
-        
-        # Attendre le démarrage
-        sleep 30
-        
-        # Tester l'accès
-        echo "🔍 Test d'accès à l'application..."
-        curl -f http://localhost:8080/ || echo "❌ Erreur d'accès à /"
-        curl -f http://localhost:8080/index.html || echo "❌ Erreur d'accès à /index.html"
-        
-        # Arrêter l'application
-        kill $APP_PID
-      shell: bash
