@@ -27,41 +27,40 @@ jobs:
     - name: Setup Node.js for Angular frontend
       uses: actions/setup-node@v4
       with:
-        node-version: '18'  # Correspond à votre node.version v18.20.4
+        node-version: '20'  # Changé de 18 à 20 pour Angular CLI
         cache: 'npm'
         cache-dependency-path: 'school-manager-multi/frontend/package-lock.json'
 
-    - name: Build Angular frontend with npm scripts
+    - name: Build Angular frontend
       run: |
         echo "=== Building Angular Frontend ==="
         cd school-manager-multi/frontend
         
+        # Vérification de la version Node.js
+        echo "Node.js version: $(node --version)"
+        echo "NPM version: $(npm --version)"
+        
         # Installation des dépendances
         npm ci
         
-        # Build Angular - utilisez la commande de votre package.json
+        # Build Angular
         npm run build
         
         echo "=== Frontend build completed ==="
-        ls -la dist/
 
-    - name: Set up JDK 21 for Spring Boot backend
+    - name: Set up JDK 21
       uses: actions/setup-java@v4
       with:
         java-version: '21'
         distribution: 'temurin'
         cache: 'maven'
 
-    - name: Build Spring Boot backend only
+    - name: Build Spring Boot backend
       run: |
         echo "=== Building Spring Boot Backend ==="
         cd school-manager-multi
-        
-        # Build seulement le backend en sautant le frontend
         mvn clean package -pl backend -am -DskipTests=false -Dskip.frontend.build=true
-        
         echo "=== Backend build completed ==="
-        ls -la backend/target/
 
     - name: Run backend tests
       run: |
@@ -72,16 +71,9 @@ jobs:
         SPRING_DATASOURCE_USERNAME: root
         SPRING_DATASOURCE_PASSWORD: ""
 
-    - name: Upload backend JAR
+    - name: Upload Backend JAR
       uses: actions/upload-artifact@v4
       with:
-        name: backend-jar
+        name: school-manager-backend
         path: school-manager-multi/backend/target/*.jar
-        retention-days: 7
-
-    - name: Upload frontend build
-      uses: actions/upload-artifact@v4
-      with:
-        name: frontend-build
-        path: school-manager-multi/frontend/dist/
-        retention-days: 7
+        retention-days: 30
