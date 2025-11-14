@@ -14,84 +14,53 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Install MySQL with alternative method
+    - name: Install MySQL Portable
       run: |
-        Write-Host "=== Installing MySQL with alternative method ==="
+        Write-Host "=== Installing MySQL Portable ==="
         
-        # Installer MySQL sans version spécifique
-        choco install mysql -y --force
+        # Télécharger MySQL 8.0.35 portable
+        Invoke-WebRequest -Uri "https://downloads.mysql.com/archives/get/p/23/file/mysql-8.0.35-winx64.zip" -OutFile "mysql.zip"
         
-        Write-Host "=== MySQL installation completed ==="
+        # Créer le dossier d'installation
+        New-Item -ItemType Directory -Path "C:\mysql" -Force
+        
+        # Extraire MySQL
+        Expand-Archive -Path "mysql.zip" -DestinationPath "C:\mysql-temp" -Force
+        Move-Item -Path "C:\mysql-temp\mysql-8.0.35-winx64\*" -Destination "C:\mysql\" -Force
+        Remove-Item -Path "C:\mysql-temp" -Recurse -Force
+        
+        Write-Host "=== MySQL Portable extracted ==="
       shell: pwsh
 
-    - name: Start MySQL Service
+    - name: Initialize and Start MySQL
       run: |
-        Write-Host "=== Starting MySQL Service ==="
+        Write-Host "=== Initializing MySQL ==="
         
-        # Démarrer le service MySQL (le nom peut varier)
-        $mysqlService = Get-Service | Where-Object {$_.Name -like "*mysql*"}
-        if ($mysqlService) {
-            Write-Host "Found MySQL service: $($mysqlService.Name)"
-            Start-Service -Name $mysqlService.Name
-            Start-Sleep -Seconds 15
-            Write-Host "MySQL service started successfully"
-        } else {
-            Write-Host "MySQL service not found, trying common names..."
-            # Essayer les noms de service courants
-            $serviceNames = @("MySQL80", "MySQL", "MySQL57", "MySQL56")
-            foreach ($serviceName in $serviceNames) {
-                try {
-                    Start-Service -Name $serviceName -ErrorAction SilentlyContinue
-                    Write-Host "Started service: $serviceName"
-                    Start-Sleep -Seconds 15
-                    break
-                } catch {
-                    Write-Host "Service $serviceName not found"
-                }
-            }
-        }
+        # Initialiser MySQL (sans mot de passe)
+        & "C:\mysql\bin\mysqld.exe" --initialize-insecure --console
+        
+        # Démarrer MySQL en arrière-plan
+        Start-Process -FilePath "C:\mysql\bin\mysqld.exe" -ArgumentList "--console" -NoNewWindow
+        
+        # Attendre que MySQL soit opérationnel
+        Write-Host "Waiting for MySQL to start..."
+        Start-Sleep -Seconds 10
+        
+        Write-Host "=== MySQL started ==="
       shell: pwsh
 
-    - name: Configure MySQL Database
+    - name: Configure Database
       run: |
-        Write-Host "=== Configuring MySQL Database ==="
+        Write-Host "=== Configuring Database ==="
         
-        # Essayer différents chemins possibles pour mysql.exe
-        $mysqlPaths = @(
-            "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe",
-            "C:\Program Files\MySQL\MySQL Server 8.1\bin\mysql.exe",
-            "C:\Program Files\MySQL\MySQL Server 5.7\bin\mysql.exe",
-            "C:\tools\mysql\current\bin\mysql.exe"
-        )
+        # Créer la base de données
+        & "C:\mysql\bin\mysql.exe" -h 127.0.0.1 -P 3306 -u root -e "CREATE DATABASE IF NOT EXISTS schooldb;"
+        & "C:\mysql\bin\mysql.exe" -h 127.0.0.1 -P 3306 -u root -e "SHOW DATABASES;"
         
-        $mysqlFound = $false
-        foreach ($path in $mysqlPaths) {
-            if (Test-Path $path) {
-                Write-Host "Found MySQL at: $path"
-                & $path -u root -e "CREATE DATABASE IF NOT EXISTS schooldb;"
-                & $path -u root -e "SHOW DATABASES;"
-                $mysqlFound = $true
-                break
-            }
-        }
-        
-        if (-not $mysqlFound) {
-            Write-Host "MySQL client not found in standard locations"
-            # Essayer de trouver via le PATH
-            $mysqlInPath = Get-Command mysql -ErrorAction SilentlyContinue
-            if ($mysqlInPath) {
-                Write-Host "Found MySQL in PATH: $($mysqlInPath.Source)"
-                mysql -u root -e "CREATE DATABASE IF NOT EXISTS schooldb;"
-                mysql -u root -e "SHOW DATABASES;"
-            } else {
-                Write-Host "WARNING: MySQL client not found, tests may fail"
-            }
-        }
-        
-        Write-Host "=== Database configuration attempted ==="
+        Write-Host "=== Database configured ==="
       shell: pwsh
 
-    - name: Setup Node.js for Angular (Latest LTS)
+    - name: Setup Node.js for Angular
       uses: actions/setup-node@v4
       with:
         node-version: 'lts/*'
@@ -105,7 +74,7 @@ jobs:
         distribution: 'temurin'
         cache: 'maven'
 
-    - name: Build Angular frontend with Maven
+    - name: Build Angular frontend
       run: |
         Write-Host "=== Building Angular Frontend ==="
         cd school-manager-multi
@@ -118,19 +87,19 @@ jobs:
         Write-Host "=== Building and Testing Spring Boot Backend ==="
         cd school-manager-multi
         
-        # Build avec tests - continuer même si MySQL n'est pas disponible
+        # Build avec tests MySQL
         mvn clean package -pl backend -am -DskipTests=false
         
-        Write-Host "=== Backend build completed ==="
+        Write-Host "=== Backend build and tests completed ==="
       env:
-        SPRING_DATASOURCE_URL: jdbc:mysql://localhost:3306/schooldb
+        SPRING_DATASOURCE_URL: jdbc:mysql://127.0.0.1:3306/schooldb
         SPRING_DATASOURCE_USERNAME: root
         SPRING_DATASOURCE_PASSWORD: ""
       shell: pwsh
 
-    - name: Upload Full Stack JAR Artifact
+    - name: Upload JAR Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: school-manager-fullstack-mysql
+        name: school-manager-fullstack
         path: school-manager-multi/backend/target/*.jar
         retention-days: 30
