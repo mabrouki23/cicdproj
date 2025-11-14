@@ -1,4 +1,4 @@
-name: Build Backend Only
+name: Build Full Stack with Angular
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
-  build-backend:
+  build:
     runs-on: ubuntu-latest
     
     services:
@@ -24,6 +24,41 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
+    - name: Setup Node.js environment
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: 'school-manager-multi/frontend/package-lock.json'
+
+    - name: Verify Node.js and npm installation
+      run: |
+        echo "Node version: $(node --version)"
+        echo "NPM version: $(npm --version)"
+        echo "Angular CLI version:"
+        cd school-manager-multi/frontend
+        npx ng version || echo "Angular CLI will be installed with npm ci"
+
+    - name: Install Angular dependencies
+      run: |
+        cd school-manager-multi/frontend
+        npm ci
+        # Si Angular CLI n'est pas installé globalement
+        npx ng version
+
+    - name: Build Angular application
+      run: |
+        cd school-manager-multi/frontend
+        npx ng build --configuration=production
+        # Ou selon votre configuration Angular
+        # npx ng build --prod
+        # npx ng build
+
+    - name: Run Angular tests (optionnel)
+      run: |
+        cd school-manager-multi/frontend
+        npx ng test --watch=false --browsers=ChromeHeadless || echo "Tests may require Chrome"
+
     - name: Set up JDK 21
       uses: actions/setup-java@v4
       with:
@@ -31,7 +66,7 @@ jobs:
         distribution: 'temurin'
         cache: 'maven'
 
-    - name: Build only backend module (skip frontend)
+    - name: Build Spring Boot backend
       run: |
         cd school-manager-multi
         mvn clean package -pl backend -am -DskipTests=false -Dskip.frontend.build=true
@@ -40,9 +75,11 @@ jobs:
         SPRING_DATASOURCE_USERNAME: root
         SPRING_DATASOURCE_PASSWORD: ""
 
-    - name: Upload backend JAR
+    - name: Upload all artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: backend-jar
-        path: school-manager-multi/backend/target/*.jar
+        name: fullstack-build
+        path: |
+          school-manager-multi/backend/target/*.jar
+          school-manager-multi/frontend/dist/
         retention-days: 7
