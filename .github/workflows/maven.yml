@@ -1,15 +1,15 @@
-name: Build and Test Application
+name: Build Full Stack Maven Project
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main ]
 
 jobs:
-  build-backend:
-    name: Build Backend
+  build:
     runs-on: ubuntu-latest
+    
     services:
       mysql:
         image: mysql:8.0
@@ -24,13 +24,6 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Verify directory structure
-      run: |
-        echo "Structure du répertoire :"
-        ls -la
-        echo "Recherche des fichiers backend..."
-        find . -name "pom.xml" -o -name "build.gradle" | head -10
-
     - name: Set up JDK 21
       uses: actions/setup-java@v4
       with:
@@ -38,21 +31,27 @@ jobs:
         distribution: 'temurin'
         cache: 'maven'
 
-    - name: Build backend
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Build complete project with Maven
       run: |
-        if [ -d "backend" ]; then
-          cd backend
-        fi
+        echo "Building full project from: $(pwd)"
+        ls -la
         mvn clean package -DskipTests=false
       env:
         SPRING_DATASOURCE_URL: jdbc:mysql://localhost:3306/schooldb
         SPRING_DATASOURCE_USERNAME: root
         SPRING_DATASOURCE_PASSWORD: ""
 
-    - name: Upload JAR artifact
+    - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: backend-jar
+        name: fullstack-build
         path: |
-          backend/target/*.jar
           target/*.jar
+          target/classes/static/  # Frontend built par Maven
+        retention-days: 7
