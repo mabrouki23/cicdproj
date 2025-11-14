@@ -10,14 +10,13 @@ jobs:
   cleanup:
     runs-on: ubuntu-latest
     permissions:
-      actions: write  # ← ADD THIS PERMISSION
+      actions: write
     steps:
     - name: Cleanup previous artifacts
       uses: actions/github-script@v7
       with:
         script: |
           try {
-            // Supprimer les anciens artifacts
             const artifacts = await github.rest.actions.listArtifactsForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -35,16 +34,12 @@ jobs:
             }
             console.log('✅ Previous artifacts cleaned up');
           } catch (error) {
-            console.log('Note: Could not delete artifacts (may not have permission):', error.message);
+            console.log('Note: Could not delete artifacts:', error.message);
           }
 
   build:
     runs-on: ubuntu-latest
     needs: cleanup
-    permissions:  # ← ADD PERMISSIONS FOR BUILD JOB TOO
-      contents: read
-      packages: write
-      actions: read
     
     services:
       mysql:
@@ -57,7 +52,7 @@ jobs:
         options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
 
     steps:
-    - name: Checkout code (fresh)
+    - name: Checkout code
       uses: actions/checkout@v4
       
     - name: Clean build directories
@@ -65,7 +60,6 @@ jobs:
         echo "=== CLEANING BUILD DIRECTORIES ==="
         cd school-manager-multi
         
-        # Nettoyer les dossiers de build
         rm -rf frontend/dist
         rm -rf frontend/node_modules
         rm -rf backend/target
@@ -86,17 +80,45 @@ jobs:
         echo "=== BUILDING ANGULAR FRONTEND ==="
         cd school-manager-multi/frontend
         
-        # Installation propre des dépendances
-        npm ci --no-cache
+        # Vérifier la configuration Angular
+        echo "📄 Configuration Angular:"
+        cat angular.json | grep -A 10 '"build"'
         
-        # Build Angular
+        npm ci --no-cache
         npm run build
         
-        # Analyse de la structure
-        echo "📁 Structure du build Angular:"
-        find dist/ -type f | head -20
-        echo "🔍 Détail du dossier dist:"
+        # Analyse détaillée de la structure de build
+        echo "🔍 ANALYSE DU BUILD ANGULAR:"
+        echo "📁 Structure complète du dossier dist:"
+        find dist/ -type f | sort
+        echo " "
+        echo "📊 Contenu détaillé:"
         ls -la dist/
+        if [ -d "dist/frontend" ]; then
+          echo "📂 Dossier dist/frontend trouvé:"
+          ls -la dist/frontend/
+        fi
+        if [ -d "dist/browser" ]; then
+          echo "📂 Dossier dist/browser trouvé:"
+          ls -la dist/browser/
+        fi
+      shell: bash
+
+    - name: Debug Angular Build Structure
+      run: |
+        echo "=== DEBUG ANGULAR BUILD STRUCTURE ==="
+        cd school-manager-multi/frontend
+        
+        # Rechercher tous les index.html possibles
+        echo "🔎 Recherche de index.html:"
+        find . -name "index.html" | grep dist
+        
+        # Vérifier la structure exacte
+        echo " "
+        echo "🏗️ Structure arborescente du build:"
+        if [ -d "dist" ]; then
+          tree dist/ || find dist/ -type d | sed 's|[^/]*/|- |g'
+        fi
       shell: bash
 
     - name: Copy Angular to Spring Boot
@@ -108,32 +130,55 @@ jobs:
         rm -rf backend/src/main/resources/static
         mkdir -p backend/src/main/resources/static
         
-        # Détecter et copier la structure Angular
-        if [ -d "frontend/dist/frontend" ] && [ -f "frontend/dist/frontend/index.html" ]; then
+        # STRATÉGIE DE COPIE AMÉLIORÉE
+        echo "🔍 Recherche des fichiers Angular..."
+        
+        # Option 1: Structure standard Angular (nouvelle version)
+        if [ -d "frontend/dist/frontend/browser" ] && [ -f "frontend/dist/frontend/browser/index.html" ]; then
+          echo "📥 Copie depuis: frontend/dist/frontend/browser/"
+          cp -r frontend/dist/frontend/browser/* backend/src/main/resources/static/
+        
+        # Option 2: Structure Angular classique
+        elif [ -d "frontend/dist/browser" ] && [ -f "frontend/dist/browser/index.html" ]; then
+          echo "📥 Copie depuis: frontend/dist/browser/"
+          cp -r frontend/dist/browser/* backend/src/main/resources/static/
+        
+        # Option 3: Structure directe
+        elif [ -d "frontend/dist/frontend" ] && [ -f "frontend/dist/frontend/index.html" ]; then
           echo "📥 Copie depuis: frontend/dist/frontend/"
           cp -r frontend/dist/frontend/* backend/src/main/resources/static/
+        
+        # Option 4: Structure racine
         elif [ -d "frontend/dist" ] && [ -f "frontend/dist/index.html" ]; then
           echo "📥 Copie depuis: frontend/dist/"
           cp -r frontend/dist/* backend/src/main/resources/static/
+        
+        # Option 5: Recherche récursive
         else
-          echo "🔍 Recherche de index.html..."
-          INDEX_PATH=$(find frontend/dist -name "index.html" | head -1)
+          echo "🔍 Recherche avancée de index.html..."
+          INDEX_PATH=$(find frontend/dist -name "index.html" -type f | head -1)
           if [ -n "$INDEX_PATH" ]; then
             INDEX_DIR=$(dirname "$INDEX_PATH")
             echo "📥 Copie depuis: $INDEX_DIR"
             cp -r "$INDEX_DIR"/* backend/src/main/resources/static/
           else
-            echo "❌ Aucun index.html trouvé dans le build Angular!"
+            echo "❌ ERREUR: Aucun index.html trouvé dans le build Angular!"
+            echo "Structure complète:"
+            find frontend/dist -type f
             exit 1
           fi
         fi
         
         # Vérification finale
-        echo "✅ Copie terminée"
+        echo " "
+        echo "✅ Copie terminée - VÉRIFICATION:"
         echo "📁 Contenu du dossier static:"
         ls -la backend/src/main/resources/static/
-        echo "🔍 index.html présent:"
-        ls -la backend/src/main/resources/static/index.html
+        echo " "
+        echo "📄 Fichiers principaux:"
+        ls -la backend/src/main/resources/static/*.html 2>/dev/null || echo "Aucun fichier HTML trouvé"
+        ls -la backend/src/main/resources/static/*.js 2>/dev/null | head -5
+        ls -la backend/src/main/resources/static/*.css 2>/dev/null | head -5
       shell: bash
 
     - name: Set up JDK 21
@@ -148,7 +193,17 @@ jobs:
         echo "=== BUILDING SPRING BOOT BACKEND ==="
         cd school-manager-multi
         
-        # Nettoyer et rebuild Maven
+        # Vérifier que les fichiers Angular sont présents
+        echo "🔍 Vérification avant build Maven:"
+        if [ -f "backend/src/main/resources/static/index.html" ]; then
+          echo "🎉 index.html est présent dans static/"
+          echo "Premières lignes de index.html:"
+          head -5 backend/src/main/resources/static/index.html
+        else
+          echo "❌ ERREUR: index.html manquant dans static/"
+          exit 1
+        fi
+        
         mvn clean package -pl backend -am -DskipTests=false
         
         echo "✅ Spring Boot build completed"
@@ -166,14 +221,15 @@ jobs:
         JAR_FILE=$(ls *.jar)
         echo "📦 JAR: $JAR_FILE"
         
-        echo "🔍 Fichiers Angular dans le JAR:"
-        jar tf $JAR_FILE | grep -E "BOOT-INF/classes/static/.*\.(html|js|css)" | head -15
+        echo "🔍 Recherche des fichiers Angular dans le JAR:"
+        jar tf $JAR_FILE | grep "BOOT-INF/classes/static/" | head -20
         
+        echo " "
         echo "✅ Vérification index.html:"
-        if jar tf $JAR_FILE | grep -q "index.html"; then
+        if jar tf $JAR_FILE | grep -q "BOOT-INF/classes/static/index.html"; then
           echo "🎉 INDEX.HTML PRÉSENT DANS LE JAR!"
         else
-          echo "❌ index.html MANQUANT"
+          echo "❌ index.html MANQUANT dans le JAR"
           echo "Contenu static complet:"
           jar tf $JAR_FILE | grep "BOOT-INF/classes/static/"
         fi
@@ -184,7 +240,7 @@ jobs:
       with:
         name: school-manager-fullstack
         path: school-manager-multi/backend/target/*.jar
-        retention-days: 1  # Garder seulement 1 jour pour éviter l'accumulation
+        retention-days: 1
 
     - name: Final Verification
       run: |
