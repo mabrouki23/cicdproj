@@ -9,32 +9,42 @@ on:
 jobs:
   cleanup:
     runs-on: ubuntu-latest
+    permissions:
+      actions: write  # ← ADD THIS PERMISSION
     steps:
     - name: Cleanup previous artifacts
       uses: actions/github-script@v7
       with:
         script: |
-          // Supprimer les anciens artifacts
-          const artifacts = await github.rest.actions.listArtifactsForRepo({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-          });
-          
-          for (const artifact of artifacts.data.artifacts) {
-            if (artifact.name.startsWith('school-manager-')) {
-              console.log(`Deleting artifact: ${artifact.name}`);
-              await github.rest.actions.deleteArtifact({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                artifact_id: artifact.id,
-              });
+          try {
+            // Supprimer les anciens artifacts
+            const artifacts = await github.rest.actions.listArtifactsForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            
+            for (const artifact of artifacts.data.artifacts) {
+              if (artifact.name.startsWith('school-manager-')) {
+                console.log(`Deleting artifact: ${artifact.name}`);
+                await github.rest.actions.deleteArtifact({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  artifact_id: artifact.id,
+                });
+              }
             }
+            console.log('✅ Previous artifacts cleaned up');
+          } catch (error) {
+            console.log('Note: Could not delete artifacts (may not have permission):', error.message);
           }
-          console.log('✅ Previous artifacts cleaned up');
 
   build:
     runs-on: ubuntu-latest
     needs: cleanup
+    permissions:  # ← ADD PERMISSIONS FOR BUILD JOB TOO
+      contents: read
+      packages: write
+      actions: read
     
     services:
       mysql:
@@ -161,7 +171,7 @@ jobs:
         
         echo "✅ Vérification index.html:"
         if jar tf $JAR_FILE | grep -q "index.html"; then
-          echo "🎉 INDEX.HTPRÉSENT DANS LE JAR!"
+          echo "🎉 INDEX.HTML PRÉSENT DANS LE JAR!"
         else
           echo "❌ index.html MANQUANT"
           echo "Contenu static complet:"
