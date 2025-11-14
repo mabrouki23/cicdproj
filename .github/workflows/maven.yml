@@ -24,27 +24,56 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Setup Node.js
+    - name: Setup Node.js for Angular
       uses: actions/setup-node@v4
       with:
         node-version: '20'
         cache: 'npm'
         cache-dependency-path: 'school-manager-multi/frontend/package-lock.json'
 
-    - name: Build Angular frontend
+    - name: Build Angular First
       run: |
-        echo "=== Building Angular Frontend ==="
+        echo "=== ÉTAPE 1: Building Angular Frontend ==="
         cd school-manager-multi/frontend
+        
+        # Clean install des dépendances
         npm ci
+        
+        # Build Angular
         npm run build
-        echo "✅ Frontend build completed"
+        
+        # Vérifier les fichiers générés
+        echo "Fichiers Angular générés:"
+        ls -la dist/
+        echo "✅ Angular build COMPLETED"
+      shell: bash
 
-    - name: Copy Angular files to Spring Boot static resources
+    - name: Clean and Prepare Backend Static Directory
       run: |
-        echo "=== Integrating Angular with Spring Boot ==="
-        mkdir -p school-manager-multi/backend/src/main/resources/static
+        echo "=== ÉTAPE 2: Préparation du dossier static ==="
+        cd school-manager-multi/backend
+        
+        # Supprimer l'ancien contenu static si existe
+        rm -rf src/main/resources/static/*
+        
+        # Créer le dossier s'il n'existe pas
+        mkdir -p src/main/resources/static
+        
+        echo "✅ Dossier static préparé"
+      shell: bash
+
+    - name: Copy Angular Build to Backend
+      run: |
+        echo "=== ÉTAPE 3: Copie des fichiers Angular vers Spring Boot ==="
+        
+        # Copier TOUS les fichiers Angular compilés
         cp -r school-manager-multi/frontend/dist/* school-manager-multi/backend/src/main/resources/static/
-        echo "✅ Angular files copied to Spring Boot"
+        
+        # Vérifier la copie
+        echo "Contenu du dossier static après copie:"
+        ls -la school-manager-multi/backend/src/main/resources/static/
+        echo "✅ Copie Angular → Spring Boot COMPLETED"
+      shell: bash
 
     - name: Set up JDK 21
       uses: actions/setup-java@v4
@@ -53,35 +82,56 @@ jobs:
         distribution: 'temurin'
         cache: 'maven'
 
-    - name: Build Spring Boot backend
+    - name: Build Spring Boot Backend
       run: |
-        echo "=== Building Spring Boot Backend ==="
+        echo "=== ÉTAPE 4: Building Spring Boot Backend ==="
         cd school-manager-multi
-        mvn clean package -pl backend -am -DskipTests=false
-        echo "✅ Backend build completed"
+        
+        # Build backend SEULEMENT (frontend déjà intégré)
+        mvn clean package -pl backend -am -DskipTests=false -Dskip.frontend.build=true
+        
+        echo "✅ Backend build COMPLETED"
       env:
         SPRING_DATASOURCE_URL: jdbc:mysql://localhost:3306/schooldb
         SPRING_DATASOURCE_USERNAME: root
         SPRING_DATASOURCE_PASSWORD: ""
+      shell: bash
 
-    - name: Verify JAR contains Angular files
+    - name: Verify Final JAR Content
       run: |
-        echo "=== Verifying JAR content ==="
+        echo "=== VÉRIFICATION: Contenu du JAR final ==="
         cd school-manager-multi/backend/target
-        jar tf *.jar | grep -E "static/.*\.(html|js|css)" | head -10
-        echo "✅ JAR verification completed"
+        
+        # Lister les fichiers Angular dans le JAR
+        echo "Fichiers Angular dans le JAR:"
+        jar tf *.jar | grep -E "(index.html|static/|assets/|\.js|\.css)" | head -20
+        
+        # Taille du JAR
+        echo "Taille du JAR:"
+        ls -lh *.jar
+        echo "✅ Vérification COMPLETED"
+      shell: bash
 
-    - name: Upload Full Stack JAR
+    - name: Upload Full Stack JAR Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: school-manager-application
+        name: school-manager-fullstack
         path: school-manager-multi/backend/target/*.jar
         retention-days: 30
 
-    - name: Build Summary
+    - name: Build Success Summary
       run: |
-        echo "🎉 BUILD SUCCESSFUL!"
-        echo "📦 Application: Spring Boot + Angular intégrés"
-        echo "🗄️ Database: MySQL 8.0 avec schooldb"
-        echo "⬇️ Artifact: school-manager-application.jar"
-        echo "🚀 Ready for deployment"
+        echo " "
+        echo "🎉 🎉 🎉 BUILD FULL STACK RÉUSSI ! 🎉 🎉 🎉"
+        echo "==========================================="
+        echo "📦 Artifact: school-manager-fullstack.jar"
+        echo "🔄 Ordre d'exécution:"
+        echo "   1. ✅ Angular build (npm run build)"
+        echo "   2. ✅ Copie vers /src/main/resources/static/"
+        echo "   3. ✅ Spring Boot build (Maven)"
+        echo "   4. ✅ JAR unique généré"
+        echo "🌐 Application: Spring Boot + Angular intégrés"
+        echo "🗄️  Database: MySQL avec schooldb"
+        echo "⬇️  Téléchargement: Disponible dans Actions"
+        echo " "
+      shell: bash
