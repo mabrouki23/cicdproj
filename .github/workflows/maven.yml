@@ -24,6 +24,57 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
+    - name: Setup Node.js for Angular
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: 'school-manager-multi/frontend/package-lock.json'
+
+    - name: Build Angular Frontend
+      run: |
+        echo "=== BUILDING ANGULAR FRONTEND ==="
+        cd school-manager-multi/frontend
+        
+        # Installation des dépendances
+        npm ci
+        
+        # Build Angular
+        npm run build
+        
+        # Vérification du build
+        echo "✅ Angular build completed"
+        ls -la dist/
+        find dist/ -name "*.html" -o -name "*.js" | head -10
+      shell: bash
+
+    - name: Prepare Backend Static Directory
+      run: |
+        echo "=== PREPARING BACKEND STATIC DIRECTORY ==="
+        cd school-manager-multi/backend
+        
+        # Nettoyer et créer le dossier static
+        rm -rf src/main/resources/static
+        mkdir -p src/main/resources/static
+        
+        echo "✅ Static directory prepared"
+      shell: bash
+
+    - name: Copy Angular to Spring Boot
+      run: |
+        echo "=== COPYING ANGULAR TO SPRING BOOT ==="
+        
+        # Copier tous les fichiers Angular
+        cp -r school-manager-multi/frontend/dist/* school-manager-multi/backend/src/main/resources/static/
+        
+        # Vérifier la copie
+        echo "✅ Files copied successfully"
+        echo "📁 Static directory content:"
+        ls -la school-manager-multi/backend/src/main/resources/static/
+        echo "🔍 index.html present:"
+        ls -la school-manager-multi/backend/src/main/resources/static/index.html
+      shell: bash
+
     - name: Set up JDK 21
       uses: actions/setup-java@v4
       with:
@@ -31,43 +82,38 @@ jobs:
         distribution: 'temurin'
         cache: 'maven'
 
-    - name: Fix Maven Configuration with Proper XML Escaping
+    - name: Build Spring Boot Backend
       run: |
-        echo "=== FIXING MAVEN CONFIG WITH PROPER XML ESCAPING ==="
+        echo "=== BUILDING SPRING BOOT BACKEND ==="
         cd school-manager-multi
         
-        if [ -f "frontend/pom.xml" ]; then
-          echo "🛠️ Fixing XML escaping in frontend POM..."
-          
-          # Restaurer la backup d'abord
-          cp frontend/pom.xml.backup frontend/pom.xml
-          
-          # Remplacer avec le bon échappement XML
-          sed -i 's|<executable>cmd</executable>|<executable>bash</executable>|g' frontend/pom.xml
-          sed -i 's|<argument>/c</argument>|<argument>-c</argument>|g' frontend/pom.xml
-          sed -i 's|<argument>build-frontend.bat</argument>|<argument>npm ci \&amp;\&amp; npm run build</argument>|g' frontend/pom.xml
-          
-          echo "✅ XML escaping fixed"
-          echo "📝 Fixed POM content:"
-          grep -A 10 "exec-maven-plugin" frontend/pom.xml
-        else
-          echo "❌ No frontend/pom.xml found"
-        fi
-      shell: bash
-
-    - name: Build Complete Project with Fixed Configuration
-      run: |
-        echo "=== BUILDING COMPLETE PROJECT ==="
-        cd school-manager-multi
+        # Build du backend seulement (frontend déjà intégré)
+        mvn clean package -pl backend -am -DskipTests=false
         
-        # Build complet avec la configuration corrigée
-        mvn clean package -DskipTests=false
-        
-        echo "✅ Complete build successful"
+        echo "✅ Spring Boot build completed"
       env:
         SPRING_DATASOURCE_URL: jdbc:mysql://localhost:3306/schooldb
         SPRING_DATASOURCE_USERNAME: root
         SPRING_DATASOURCE_PASSWORD: ""
+      shell: bash
+
+    - name: Verify Final JAR
+      run: |
+        echo "=== VERIFYING FINAL JAR ==="
+        cd school-manager-multi/backend/target
+        
+        JAR_FILE=$(ls *.jar)
+        echo "📦 JAR File: $JAR_FILE"
+        
+        # Vérifier le contenu
+        echo "🔍 Angular files in JAR:"
+        jar tf $JAR_FILE | grep -E "BOOT-INF/classes/static/" | head -15
+        
+        echo "✅ index.html in JAR:"
+        jar tf $JAR_FILE | grep "index.html" && echo "✅ FOUND" || echo "❌ MISSING"
+        
+        echo "📊 Total static files:"
+        jar tf $JAR_FILE | grep "BOOT-INF/classes/static/" | wc -l
       shell: bash
 
     - name: Upload JAR Artifact
@@ -76,3 +122,16 @@ jobs:
         name: school-manager-fullstack
         path: school-manager-multi/backend/target/*.jar
         retention-days: 30
+
+    - name: Build Success
+      run: |
+        echo " "
+        echo "🎉 🎉 🎉 BUILD SUCCESSFUL! 🎉 🎉 🎉"
+        echo "==================================="
+        echo "✅ Angular built and integrated"
+        echo "✅ Spring Boot with MySQL"
+        echo "✅ Single JAR with full stack"
+        echo "📦 Artifact: school-manager-fullstack"
+        echo "⬇️ Download from Actions tab"
+        echo " "
+      shell: bash
