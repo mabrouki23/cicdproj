@@ -1,4 +1,4 @@
-name: Build Full Stack Application
+name: Build Full Stack Application - Windows with MySQL
 
 on:
   push:
@@ -8,80 +8,116 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ALLOW_EMPTY_PASSWORD: yes
-          MYSQL_DATABASE: schooldb
-        ports:
-          - 3306:3306
-        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
-
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Setup Node.js for Angular frontend
+    - name: Install and configure MySQL
+      run: |
+        Write-Host "=== Installing MySQL ==="
+        
+        # Télécharger et installer MySQL
+        choco install mysql --version=8.0.35 -y --force
+        
+        Write-Host "=== MySQL installation completed ==="
+      shell: pwsh
+
+    - name: Start MySQL Service
+      run: |
+        Write-Host "=== Starting MySQL Service ==="
+        
+        # Démarrer le service MySQL
+        Start-Service -Name "MySQL80"
+        
+        # Attendre que MySQL soit opérationnel
+        Start-Sleep -Seconds 10
+        
+        Write-Host "=== MySQL service started ==="
+      shell: pwsh
+
+    - name: Configure MySQL Database
+      run: |
+        Write-Host "=== Configuring MySQL Database ==="
+        
+        # Créer la base de données (MySQL sans mot de passe par défaut sur Windows)
+        & "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u root -e "CREATE DATABASE IF NOT EXISTS schooldb;"
+        & "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u root -e "SHOW DATABASES;"
+        
+        Write-Host "=== Database configured ==="
+      shell: pwsh
+
+    - name: Setup Node.js for Angular (Latest LTS)
       uses: actions/setup-node@v4
       with:
-        node-version: '18'  # Correspond à votre node.version v18.20.4
+        node-version: 'lts/*'  # Dernière version LTS stable
         cache: 'npm'
         cache-dependency-path: 'school-manager-multi/frontend/package-lock.json'
 
-    - name: Build Angular frontend with npm scripts
+    - name: Verify Node.js version
       run: |
-        echo "=== Building Angular Frontend ==="
-        cd school-manager-multi/frontend
-        
-        # Installation des dépendances
-        npm ci
-        
-        # Build Angular - utilisez la commande de votre package.json
-        npm run build
-        
-        echo "=== Frontend build completed ==="
-        ls -la dist/
+        Write-Host "=== Node.js Version ==="
+        node --version
+        npm --version
+        Write-Host "=== Using latest stable LTS version ==="
+      shell: pwsh
 
-    - name: Set up JDK 21 for Spring Boot backend
+    - name: Set up JDK 21
       uses: actions/setup-java@v4
       with:
         java-version: '21'
         distribution: 'temurin'
         cache: 'maven'
 
-    - name: Build Spring Boot backend only
+    - name: Build Angular frontend with Maven
       run: |
-        echo "=== Building Spring Boot Backend ==="
+        Write-Host "=== Building Angular Frontend ==="
         cd school-manager-multi
-        
-        # Build seulement le backend en sautant le frontend
-        mvn clean package -pl backend -am -DskipTests=false -Dskip.frontend.build=true
-        
-        echo "=== Backend build completed ==="
-        ls -la backend/target/
+        mvn clean compile -pl frontend -DskipTests=true
+        Write-Host "=== Frontend build completed ==="
+      shell: pwsh
 
-    - name: Run backend tests
+    - name: Build and Test Spring Boot backend with MySQL
       run: |
+        Write-Host "=== Building and Testing Spring Boot Backend ==="
         cd school-manager-multi
-        mvn test -pl backend -Dskip.frontend.build=true
+        
+        # Build avec tests - MySQL est maintenant disponible
+        mvn clean package -pl backend -am -DskipTests=false
+        
+        Write-Host "=== Backend build and tests completed ==="
       env:
         SPRING_DATASOURCE_URL: jdbc:mysql://localhost:3306/schooldb
         SPRING_DATASOURCE_USERNAME: root
         SPRING_DATASOURCE_PASSWORD: ""
+      shell: pwsh
 
-    - name: Upload backend JAR
+    - name: Verify JAR content
+      run: |
+        Write-Host "=== Verifying JAR content ==="
+        cd school-manager-multi/backend/target
+        
+        jar tf *.jar | Select-String -Pattern "(index.html|static/|assets/)" | Select-Object -First 10
+        
+        Write-Host "=== JAR File ==="
+        Get-ChildItem *.jar | Format-Table Name, @{Name="Size(MB)";Expression={[math]::Round($_.Length/1MB,2)}} -AutoSize
+      shell: pwsh
+
+    - name: Upload Full Stack JAR Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: backend-jar
+        name: school-manager-fullstack-mysql
         path: school-manager-multi/backend/target/*.jar
-        retention-days: 7
+        retention-days: 30
 
-    - name: Upload frontend build
-      uses: actions/upload-artifact@v4
-      with:
-        name: frontend-build
-        path: school-manager-multi/frontend/dist/
-        retention-days: 7
+    - name: Build success summary
+      run: |
+        Write-Host "🎉 BUILD SUCCESSFUL WITH MYSQL ON WINDOWS!" -ForegroundColor Green
+        Write-Host "📦 Artifact: school-manager-fullstack-mysql"
+        Write-Host "🗄️  Database: MySQL 8.0 installed locally"
+        Write-Host "🖥️  Environment: Windows Runner"
+        Write-Host "📟 Node.js: Latest LTS version"
+        Write-Host "✅ Tests: Executed with real MySQL database"
+        Write-Host "⬇️  Download from Actions tab"
+      shell: pwsh
