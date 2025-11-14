@@ -1,25 +1,172 @@
-    - name: Copy All Possible Angular Files
+name: Build Full Stack Application
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: yes
+          MYSQL_DATABASE: schooldb
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js for Angular
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: 'school-manager-multi/frontend/package-lock.json'
+
+    - name: Build Angular Frontend
       run: |
-        echo "=== COPYING ALL POSSIBLE ANGULAR FILES ==="
-        cd school-manager-multi
+        echo "=== BUILDING ANGULAR FRONTEND ==="
+        cd school-manager-multi/frontend
         
-        # Nettoyer le static
-        rm -rf backend/src/main/resources/static
-        mkdir -p backend/src/main/resources/static
+        # Installation des dépendances
+        npm ci
         
-        # Essayer toutes les structures possibles
-        if [ -d "frontend/dist/frontend" ]; then
-          echo "📥 Copie depuis frontend/dist/frontend/"
-          cp -r frontend/dist/frontend/* backend/src/main/resources/static/
-        elif [ -d "frontend/dist" ]; then
-          echo "📥 Copie depuis frontend/dist/"
-          cp -r frontend/dist/* backend/src/main/resources/static/
-        else
-          echo "🔍 Recherche de fichiers compilés..."
-          find frontend/ -name "index.html" -exec cp -r {}/../* backend/src/main/resources/static/ \; 2>/dev/null || true
+        # Build Angular
+        npm run build
+        
+        # Vérification détaillée de la structure
+        echo "✅ Angular build completed"
+        echo "📁 Structure du dossier dist:"
+        ls -la dist/
+        echo "🔍 Contenu complet:"
+        find dist/ -type f | head -20
+      shell: bash
+
+    - name: Analyze Angular Build Structure
+      run: |
+        echo "=== ANALYZING ANGULAR BUILD STRUCTURE ==="
+        cd school-manager-multi/frontend
+        
+        # Détecter la structure exacte
+        if [ -d "dist/frontend" ]; then
+          echo "📁 Structure: dist/frontend/"
+          ls -la dist/frontend/
+          echo "ANGULAR_SOURCE=dist/frontend" >> $GITHUB_ENV
+        elif [ -d "dist" ]; then
+          echo "📁 Structure: dist/"
+          ls -la dist/
+          # Vérifier s'il y a index.html directement dans dist
+          if [ -f "dist/index.html" ]; then
+            echo "ANGULAR_SOURCE=dist" >> $GITHUB_ENV
+          else
+            # Chercher le sous-dossier qui contient index.html
+            SUBDIR=$(find dist/ -name "index.html" -exec dirname {} \; | head -1)
+            if [ -n "$SUBDIR" ]; then
+              echo "📁 Structure: $SUBDIR"
+              echo "ANGULAR_SOURCE=$SUBDIR" >> $GITHUB_ENV
+            else
+              echo "❌ Aucun index.html trouvé!"
+            fi
+          fi
         fi
         
-        # Vérifier le résultat
-        echo "✅ Résultat:"
-        find backend/src/main/resources/static/ -name "*.html" -o -name "*.js" | head -10
+        echo "Source détectée: $ANGULAR_SOURCE"
       shell: bash
+
+    - name: Prepare Backend Static Directory
+      run: |
+        echo "=== PREPARING BACKEND STATIC DIRECTORY ==="
+        cd school-manager-multi/backend
+        
+        # Nettoyer et créer le dossier static
+        rm -rf src/main/resources/static
+        mkdir -p src/main/resources/static
+        
+        echo "✅ Static directory prepared"
+      shell: bash
+
+    - name: Copy Angular to Spring Boot (Correct Structure)
+      run: |
+        echo "=== COPYING ANGULAR TO SPRING BOOT ==="
+        cd school-manager-multi/frontend
+        
+        echo "Source: $ANGULAR_SOURCE"
+        
+        # Copier selon la structure détectée
+        if [ "$ANGULAR_SOURCE" = "dist/frontend" ]; then
+          echo "📥 Copie depuis: dist/frontend/"
+          cp -r dist/frontend/* ../backend/src/main/resources/static/
+        elif [ "$ANGULAR_SOURCE" = "dist" ]; then
+          echo "📥 Copie depuis: dist/"
+          cp -r dist/* ../backend/src/main/resources/static/
+        else
+          echo "📥 Copie depuis: $ANGULAR_SOURCE"
+          cp -r $ANGULAR_SOURCE/* ../backend/src/main/resources/static/
+        fi
+        
+        # Vérifier la copie
+        echo "✅ Files copied successfully"
+        echo "📁 Static directory content:"
+        ls -la ../backend/src/main/resources/static/
+        echo "🔍 Fichiers HTML:"
+        find ../backend/src/main/resources/static/ -name "*.html" | head -10
+      shell: bash
+
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+        cache: 'maven'
+
+    - name: Build Spring Boot Backend
+      run: |
+        echo "=== BUILDING SPRING BOOT BACKEND ==="
+        cd school-manager-multi
+        
+        # Build du backend seulement (frontend déjà intégré)
+        mvn clean package -pl backend -am -DskipTests=false
+        
+        echo "✅ Spring Boot build completed"
+      env:
+        SPRING_DATASOURCE_URL: jdbc:mysql://localhost:3306/schooldb
+        SPRING_DATASOURCE_USERNAME: root
+        SPRING_DATASOURCE_PASSWORD: ""
+      shell: bash
+
+    - name: Verify Final JAR
+      run: |
+        echo "=== VERIFYING FINAL JAR ==="
+        cd school-manager-multi/backend/target
+        
+        JAR_FILE=$(ls *.jar)
+        echo "📦 JAR File: $JAR_FILE"
+        
+        # Vérifier le contenu
+        echo "🔍 Static files in JAR:"
+        jar tf $JAR_FILE | grep -E "BOOT-INF/classes/static/" | head -15
+        
+        echo "✅ index.html check:"
+        if jar tf $JAR_FILE | grep -q "index.html"; then
+          echo "🎉 INDEX.HTML TROUVÉ DANS LE JAR!"
+        else
+          echo "❌ index.html NON TROUVÉ"
+          echo "Contenu static complet:"
+          jar tf $JAR_FILE | grep "BOOT-INF/classes/static/"
+        fi
+      shell: bash
+
+    - name: Upload JAR Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: school-manager-fullstack
+        path: school-manager-multi/backend/target/*.jar
+        retention-days: 30
