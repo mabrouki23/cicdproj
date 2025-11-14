@@ -24,13 +24,6 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Setup Node.js for Angular
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-        cache: 'npm'
-        cache-dependency-path: 'school-manager-multi/frontend/package-lock.json'
-
     - name: Set up JDK 21
       uses: actions/setup-java@v4
       with:
@@ -38,98 +31,47 @@ jobs:
         distribution: 'temurin'
         cache: 'maven'
 
-    - name: Build Frontend using Maven Configuration
+    - name: Build Complete Project with Maven Frontend Plugin
       run: |
-        echo "=== BUILDING FRONTEND WITH MAVEN ==="
+        echo "=== BUILDING WITH MAVEN FRONTEND PLUGIN ==="
         cd school-manager-multi
         
-        # Exécuter seulement le build du frontend via Maven
-        mvn clean compile -pl frontend -DskipTests=true
+        # Le frontend-maven-plugin va automatiquement:
+        # 1. Installer Node.js et npm
+        # 2. Exécuter npm install
+        # 3. Exécuter npm run build
+        # 4. Intégrer les fichiers dans le JAR final
         
-        echo "✅ Frontend build via Maven completed"
-      shell: bash
-
-    - name: Check Frontend Build Result
-      run: |
-        echo "=== CHECKING FRONTEND BUILD ==="
-        cd school-manager-multi/frontend
+        mvn clean package -DskipTests=false
         
-        echo "Content after Maven build:"
-        ls -la
-        
-        echo "Dist folder content:"
-        if [ -d "dist" ]; then
-          ls -la dist/
-          find dist/ -type f | head -20
-        else
-          echo "❌ No dist folder found!"
-          # Chercher où les fichiers sont générés
-          find . -name "index.html" -o -name "*.js" -o -name "*.css" | head -20
-        fi
-      shell: bash
-
-    - name: Copy Frontend to Backend Resources
-      run: |
-        echo "=== COPYING FRONTEND TO BACKEND ==="
-        cd school-manager-multi
-        
-        # Nettoyer le dossier static du backend
-        rm -rf backend/src/main/resources/static
-        mkdir -p backend/src/main/resources/static
-        
-        # Copier selon l'emplacement des fichiers générés par Maven
-        if [ -d "frontend/dist" ]; then
-          echo "📥 Copying from frontend/dist/"
-          cp -r frontend/dist/* backend/src/main/resources/static/
-        elif [ -d "frontend/target/dist" ]; then
-          echo "📥 Copying from frontend/target/dist/"
-          cp -r frontend/target/dist/* backend/src/main/resources/static/
-        else
-          echo "🔍 Searching for built files..."
-          # Chercher les fichiers compilés
-          find frontend/ -name "index.html" -exec dirname {} \; | head -1
-          BUILD_DIR=$(find frontend/ -name "index.html" -exec dirname {} \; | head -1)
-          if [ -n "$BUILD_DIR" ]; then
-            echo "📥 Copying from $BUILD_DIR"
-            cp -r $BUILD_DIR/* backend/src/main/resources/static/
-          else
-            echo "❌ No built files found!"
-          fi
-        fi
-        
-        echo "✅ Backend static content after copy:"
-        ls -la backend/src/main/resources/static/
-        find backend/src/main/resources/static/ -name "*.html" | head -10
-      shell: bash
-
-    - name: Build Backend with Frontend Integrated
-      run: |
-        echo "=== BUILDING BACKEND WITH INTEGRATED FRONTEND ==="
-        cd school-manager-multi
-        
-        # Build du backend avec le frontend déjà copié
-        mvn clean package -pl backend -am -DskipTests=false -Dskip.frontend.build=true
-        
-        echo "✅ Full stack build completed"
+        echo "✅ Maven build completed successfully"
       env:
         SPRING_DATASOURCE_URL: jdbc:mysql://localhost:3306/schooldb
         SPRING_DATASOURCE_USERNAME: root
         SPRING_DATASOURCE_PASSWORD: ""
       shell: bash
 
-    - name: Verify Final JAR
+    - name: Verify Build Results
       run: |
-        echo "=== VERIFYING JAR CONTENT ==="
-        cd school-manager-multi/backend/target
+        echo "=== VERIFYING BUILD RESULTS ==="
+        cd school-manager-multi
         
-        JAR_FILE=$(ls *.jar)
-        echo "JAR: $JAR_FILE"
+        echo "📁 Frontend build results:"
+        if [ -d "frontend/dist" ]; then
+          echo "✅ Angular dist folder found:"
+          ls -la frontend/dist/
+          find frontend/dist/ -name "*.html" -o -name "*.js" | head -10
+        fi
         
-        echo "Static files in JAR:"
-        jar tf $JAR_FILE | grep "BOOT-INF/classes/static/" | head -20
+        echo "📦 Backend JAR:"
+        ls -la backend/target/*.jar
         
-        echo "index.html in JAR:"
-        jar tf $JAR_FILE | grep "index.html" || echo "❌ index.html not found"
+        echo "🔍 JAR content (Angular files):"
+        jar tf backend/target/*.jar | grep -E "(index.html|static/|assets/)" | head -15
+        
+        echo "🔍 JAR content (complete static):"
+        jar tf backend/target/*.jar | grep "BOOT-INF/classes/static/" | wc -l
+        echo " files in static directory"
       shell: bash
 
     - name: Upload JAR Artifact
@@ -138,3 +80,16 @@ jobs:
         name: school-manager-fullstack
         path: school-manager-multi/backend/target/*.jar
         retention-days: 30
+
+    - name: Build Success Summary
+      run: |
+        echo " "
+        echo "🎉 MAVEN FRONTEND-PLUGIN BUILD SUCCESSFUL!"
+        echo "=========================================="
+        echo "⚙️  Build Tool: Maven avec frontend-maven-plugin"
+        echo "📱 Frontend: Angular built automatically by Maven"
+        echo "⚙️  Backend: Spring Boot avec Angular intégré"
+        echo "📦 Output: Single JAR with full stack"
+        echo "⬇️  Download: school-manager-fullstack artifact"
+        echo " "
+      shell: bash
