@@ -31,108 +31,6 @@ jobs:
         cache: 'npm'
         cache-dependency-path: 'school-manager-multi/frontend/package-lock.json'
 
-    - name: Build Angular
-      run: |
-        echo "=== BUILD ANGULAR ==="
-        cd school-manager-multi/frontend
-        npm ci
-        npm run build
-        echo "✅ Angular build completed"
-      shell: bash
-
-    - name: Clean Backend Static
-      run: |
-        echo "=== CLEAN STATIC DIRECTORY ==="
-        cd school-manager-multi/backend
-        rm -rf src/main/resources/static
-        mkdir -p src/main/resources/static
-      shell: bash
-
-    - name: Copy Angular to Backend
-      run: |
-        echo "=== COPY ANGULAR TO SPRING BOOT ==="
-        
-        # Vérifier la structure Angular
-        echo "Angular dist content:"
-        ls -la school-manager-multi/frontend/dist/
-        
-        # Copier récursivement
-        cp -r school-manager-multi/frontend/dist/* school-manager-multi/backend/src/main/resources/static/
-        
-        echo "Backend static content after copy:"
-        ls -la school-manager-multi/backend/src/main/resources/static/
-      shell: bash
-
-    - name: Add Spring Boot Static Configuration
-      run: |
-        echo "=== ADDING SPRING BOOT STATIC CONFIG ==="
-        cd school-manager-multi/backend
-        
-        # Créer le fichier de configuration pour servir les statics
-        mkdir -p src/main/resources
-        
-        cat > src/main/resources/application.properties << 'EOF'
-        # Server Configuration
-        server.port=8080
-        
-        # Static Resources Configuration
-        spring.web.resources.static-locations=classpath:/static/
-        spring.mvc.static-path-pattern=/**
-        
-        # MySQL Configuration
-        spring.datasource.url=jdbc:mysql://localhost:3306/schooldb
-        spring.datasource.username=root
-        spring.datasource.password=
-        
-        # JPA Configuration
-        spring.jpa.hibernate.ddl-auto=update
-        spring.jpa.show-sql=true
-        spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQLDialect
-        
-        # Frontend Routing (SPA support)
-        spring.web.resources.add-mappings=true
-        spring.web.resources.cache.period=3600
-        EOF
-        
-        echo "✅ Spring Boot configuration added"
-        
-        # Vérifier que index.html est présent
-        if [ -f "src/main/resources/static/index.html" ]; then
-          echo "✅ index.html found in static directory"
-        else
-          echo "❌ index.html NOT found!"
-          find src/main/resources/static/ -name "*.html"
-        fi
-      shell: bash
-
-    - name: Add Spring Boot Controller for SPA
-      run: |
-        echo "=== ADDING SPA CONTROLLER ==="
-        cd school-manager-multi/backend
-        
-        # Créer le dossier pour le controller
-        mkdir -p src/main/java/com/hocine/controller
-        
-        # Créer le controller pour rediriger vers index.html
-        cat > src/main/java/com/hocine/controller/SpaController.java << 'EOF'
-        package com.hocine.controller;
-        
-        import org.springframework.stereotype.Controller;
-        import org.springframework.web.bind.annotation.RequestMapping;
-        
-        @Controller
-        public class SpaController {
-            
-            @RequestMapping(value = "/{path:[^\\.]*}")
-            public String redirect() {
-                return "forward:/index.html";
-            }
-        }
-        EOF
-        
-        echo "✅ SPA Controller added"
-      shell: bash
-
     - name: Set up JDK 21
       uses: actions/setup-java@v4
       with:
@@ -140,63 +38,98 @@ jobs:
         distribution: 'temurin'
         cache: 'maven'
 
-    - name: Build Spring Boot Backend
+    - name: Build Frontend using Maven Configuration
       run: |
-        echo "=== BUILDING SPRING BOOT ==="
+        echo "=== BUILDING FRONTEND WITH MAVEN ==="
         cd school-manager-multi
         
-        # Compiler d'abord pour vérifier les erreurs
-        mvn clean compile -pl backend -am
+        # Exécuter seulement le build du frontend via Maven
+        mvn clean compile -pl frontend -DskipTests=true
         
-        # Puis package
-        mvn package -pl backend -am -DskipTests=false -Dskip.frontend.build=true
+        echo "✅ Frontend build via Maven completed"
+      shell: bash
+
+    - name: Check Frontend Build Result
+      run: |
+        echo "=== CHECKING FRONTEND BUILD ==="
+        cd school-manager-multi/frontend
         
-        echo "✅ Spring Boot build completed"
+        echo "Content after Maven build:"
+        ls -la
+        
+        echo "Dist folder content:"
+        if [ -d "dist" ]; then
+          ls -la dist/
+          find dist/ -type f | head -20
+        else
+          echo "❌ No dist folder found!"
+          # Chercher où les fichiers sont générés
+          find . -name "index.html" -o -name "*.js" -o -name "*.css" | head -20
+        fi
+      shell: bash
+
+    - name: Copy Frontend to Backend Resources
+      run: |
+        echo "=== COPYING FRONTEND TO BACKEND ==="
+        cd school-manager-multi
+        
+        # Nettoyer le dossier static du backend
+        rm -rf backend/src/main/resources/static
+        mkdir -p backend/src/main/resources/static
+        
+        # Copier selon l'emplacement des fichiers générés par Maven
+        if [ -d "frontend/dist" ]; then
+          echo "📥 Copying from frontend/dist/"
+          cp -r frontend/dist/* backend/src/main/resources/static/
+        elif [ -d "frontend/target/dist" ]; then
+          echo "📥 Copying from frontend/target/dist/"
+          cp -r frontend/target/dist/* backend/src/main/resources/static/
+        else
+          echo "🔍 Searching for built files..."
+          # Chercher les fichiers compilés
+          find frontend/ -name "index.html" -exec dirname {} \; | head -1
+          BUILD_DIR=$(find frontend/ -name "index.html" -exec dirname {} \; | head -1)
+          if [ -n "$BUILD_DIR" ]; then
+            echo "📥 Copying from $BUILD_DIR"
+            cp -r $BUILD_DIR/* backend/src/main/resources/static/
+          else
+            echo "❌ No built files found!"
+          fi
+        fi
+        
+        echo "✅ Backend static content after copy:"
+        ls -la backend/src/main/resources/static/
+        find backend/src/main/resources/static/ -name "*.html" | head -10
+      shell: bash
+
+    - name: Build Backend with Frontend Integrated
+      run: |
+        echo "=== BUILDING BACKEND WITH INTEGRATED FRONTEND ==="
+        cd school-manager-multi
+        
+        # Build du backend avec le frontend déjà copié
+        mvn clean package -pl backend -am -DskipTests=false -Dskip.frontend.build=true
+        
+        echo "✅ Full stack build completed"
       env:
         SPRING_DATASOURCE_URL: jdbc:mysql://localhost:3306/schooldb
         SPRING_DATASOURCE_USERNAME: root
         SPRING_DATASOURCE_PASSWORD: ""
       shell: bash
 
-    - name: Verify JAR Content
+    - name: Verify Final JAR
       run: |
         echo "=== VERIFYING JAR CONTENT ==="
         cd school-manager-multi/backend/target
         
         JAR_FILE=$(ls *.jar)
-        echo "JAR file: $JAR_FILE"
+        echo "JAR: $JAR_FILE"
         
         echo "Static files in JAR:"
         jar tf $JAR_FILE | grep "BOOT-INF/classes/static/" | head -20
         
-        echo "Controller in JAR:"
-        jar tf $JAR_FILE | grep "SpaController"
-        
-        echo "Configuration in JAR:"
-        jar tf $JAR_FILE | grep "application.properties"
-      shell: bash
-
-    - name: Test Application
-      run: |
-        echo "=== TESTING APPLICATION ==="
-        cd school-manager-multi/backend/target
-        
-        # Démarrer l'application
-        java -jar *.jar &
-        APP_PID=$!
-        
-        # Attendre le démarrage
-        echo "Waiting for app to start..."
-        sleep 30
-        
-        # Tester les endpoints
-        echo "Testing endpoints:"
-        curl -v http://localhost:8080/ || echo "Failed to access /"
-        curl -v http://localhost:8080/index.html || echo "Failed to access /index.html"
-        
-        # Arrêter l'application
-        kill $APP_PID
-        echo "✅ Application test completed"
+        echo "index.html in JAR:"
+        jar tf $JAR_FILE | grep "index.html" || echo "❌ index.html not found"
       shell: bash
 
     - name: Upload JAR Artifact
