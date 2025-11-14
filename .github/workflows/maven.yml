@@ -24,19 +24,6 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Debug Project Structure
-      run: |
-        echo "=== DEBUG PROJECT STRUCTURE ==="
-        echo "📁 Root directory:"
-        ls -la
-        echo "📁 school-manager-multi:"
-        ls -la school-manager-multi/
-        echo "🔍 Maven files:"
-        find . -name "pom.xml" -type f
-        echo "🔍 Angular files:"
-        find . -name "angular.json" -o -name "package.json" -type f
-      shell: bash
-
     - name: Set up JDK 21
       uses: actions/setup-java@v4
       with:
@@ -44,208 +31,48 @@ jobs:
         distribution: 'temurin'
         cache: 'maven'
 
-    - name: Analyze Maven Frontend Configuration
+    - name: Fix Maven Configuration with Proper XML Escaping
       run: |
-        echo "=== ANALYZING MAVEN FRONTEND CONFIG ==="
+        echo "=== FIXING MAVEN CONFIG WITH PROPER XML ESCAPING ==="
         cd school-manager-multi
         
-        echo "📋 Parent POM plugins:"
-        grep -A 10 -B 5 "frontend-maven-plugin" pom.xml || echo "No frontend-maven-plugin in parent"
-        
-        echo "📋 Frontend POM configuration:"
         if [ -f "frontend/pom.xml" ]; then
-          grep -A 20 "exec-maven-plugin" frontend/pom.xml || echo "No exec-maven-plugin in frontend"
-        fi
-        
-        echo "📋 Backend POM configuration:"
-        grep -A 10 "spring-boot-maven-plugin" backend/pom.xml || echo "No spring-boot plugin config"
-      shell: bash
-
-    - name: Fix Maven Configuration for Linux
-      run: |
-        echo "=== FIXING MAVEN CONFIG FOR LINUX ==="
-        cd school-manager-multi
-        
-        # Vérifier et adapter la configuration pour Linux
-        if [ -f "frontend/pom.xml" ]; then
-          echo "🛠️  Adapting frontend POM for Linux..."
+          echo "🛠️ Fixing XML escaping in frontend POM..."
           
-          # Créer une backup
-          cp frontend/pom.xml frontend/pom.xml.backup
+          # Restaurer la backup d'abord
+          cp frontend/pom.xml.backup frontend/pom.xml
           
-          # Remplacer les commandes Windows par des commandes Linux
+          # Remplacer avec le bon échappement XML
           sed -i 's|<executable>cmd</executable>|<executable>bash</executable>|g' frontend/pom.xml
           sed -i 's|<argument>/c</argument>|<argument>-c</argument>|g' frontend/pom.xml
-          sed -i 's|<argument>build-frontend.bat</argument>|<argument>npm ci \&\& npm run build</argument>|g' frontend/pom.xml
+          sed -i 's|<argument>build-frontend.bat</argument>|<argument>npm ci \&amp;\&amp; npm run build</argument>|g' frontend/pom.xml
           
-          echo "✅ Frontend POM adapted for Linux"
-        fi
-        
-        # Vérifier les modifications
-        echo "📝 Modified frontend POM:"
-        grep -A 10 "exec-maven-plugin" frontend/pom.xml || echo "No exec-maven-plugin found"
-      shell: bash
-
-    - name: Create Linux Build Script
-      run: |
-        echo "=== CREATING LINUX BUILD SCRIPT ==="
-        cd school-manager-multi/frontend
-        
-        # Créer un script de build Linux
-        cat > build-frontend.sh << 'EOF'
-        #!/bin/bash
-        echo "🔧 Installing Angular dependencies..."
-        npm ci
-        
-        echo "🏗️ Building Angular application..."
-        npm run build
-        
-        echo "✅ Angular build completed!"
-        ls -la dist/
-        EOF
-        
-        chmod +x build-frontend.sh
-        echo "✅ Linux build script created"
-      shell: bash
-
-    - name: Build Frontend with Maven
-      run: |
-        echo "=== BUILDING FRONTEND WITH MAVEN ==="
-        cd school-manager-multi
-        
-        # Build du frontend seulement
-        mvn clean compile -pl frontend -DskipTests=true
-        
-        echo "✅ Frontend build completed"
-      shell: bash
-
-    - name: Verify Frontend Build
-      run: |
-        echo "=== VERIFYING FRONTEND BUILD ==="
-        cd school-manager-multi/frontend
-        
-        echo "📁 Frontend directory after build:"
-        ls -la
-        
-        echo "🔍 Dist folder:"
-        if [ -d "dist" ]; then
-          ls -la dist/
-          echo "📄 Files in dist:"
-          find dist/ -type f | head -15
-          echo "✅ Frontend build successful"
+          echo "✅ XML escaping fixed"
+          echo "📝 Fixed POM content:"
+          grep -A 10 "exec-maven-plugin" frontend/pom.xml
         else
-          echo "❌ No dist folder found!"
-          echo "🔍 Searching for built files:"
-          find . -name "index.html" -o -name "*.js" -o -name "*.css" | head -15
+          echo "❌ No frontend/pom.xml found"
         fi
       shell: bash
 
-    - name: Manual Copy if Maven Failed
-      if: failure()
+    - name: Build Complete Project with Fixed Configuration
       run: |
-        echo "=== MANUAL COPY FALLBACK ==="
+        echo "=== BUILDING COMPLETE PROJECT ==="
         cd school-manager-multi
         
-        # Setup Node.js pour build manuel
-        npm ci --prefix frontend
-        npm run build --prefix frontend
+        # Build complet avec la configuration corrigée
+        mvn clean package -DskipTests=false
         
-        # Copie manuelle vers backend
-        rm -rf backend/src/main/resources/static
-        mkdir -p backend/src/main/resources/static
-        cp -r frontend/dist/* backend/src/main/resources/static/
-        
-        echo "✅ Manual copy completed"
-        ls -la backend/src/main/resources/static/
-      shell: bash
-
-    - name: Build Backend with Integrated Frontend
-      run: |
-        echo "=== BUILDING BACKEND WITH FRONTEND ==="
-        cd school-manager-multi
-        
-        # Build du backend avec frontend intégré
-        mvn clean package -pl backend -am -DskipTests=false -Dskip.frontend.build=true
-        
-        echo "✅ Backend build completed"
+        echo "✅ Complete build successful"
       env:
         SPRING_DATASOURCE_URL: jdbc:mysql://localhost:3306/schooldb
         SPRING_DATASOURCE_USERNAME: root
         SPRING_DATASOURCE_PASSWORD: ""
       shell: bash
 
-    - name: Comprehensive JAR Verification
-      run: |
-        echo "=== COMPREHENSIVE JAR VERIFICATION ==="
-        cd school-manager-multi/backend/target
-        
-        JAR_FILE=$(ls *.jar | head -1)
-        echo "📦 JAR File: $JAR_FILE"
-        ls -lh $JAR_FILE
-        
-        echo "🔍 Static files in JAR:"
-        jar tf $JAR_FILE | grep "BOOT-INF/classes/static/" | head -20
-        
-        echo "🔍 Critical files check:"
-        jar tf $JAR_FILE | grep "index.html" && echo "✅ index.html found" || echo "❌ index.html missing"
-        jar tf $JAR_FILE | grep "main.js" && echo "✅ main.js found" || echo "❌ main.js missing"
-        jar tf $JAR_FILE | grep "styles.css" && echo "✅ styles.css found" || echo "❌ styles.css missing"
-        
-        echo "📊 Total static files:"
-        jar tf $JAR_FILE | grep "BOOT-INF/classes/static/" | wc -l
-      shell: bash
-
-    - name: Test Application Functionality
-      run: |
-        echo "=== TESTING APPLICATION ==="
-        cd school-manager-multi/backend/target
-        
-        # Démarrer l'application
-        java -jar *.jar &
-        APP_PID=$!
-        
-        echo "⏳ Waiting for application to start..."
-        sleep 45
-        
-        echo "🔍 Testing endpoints:"
-        
-        # Test API
-        curl -f http://localhost:8080/api/students || echo "⚠️ API endpoint not available"
-        
-        # Test static files
-        curl -f http://localhost:8080/ || echo "⚠️ Root endpoint failed"
-        curl -f http://localhost:8080/index.html || echo "⚠️ index.html not served"
-        
-        # Test assets
-        curl -f http://localhost:8080/assets/ || echo "⚠️ Assets not served"
-        
-        # Arrêter l'application
-        kill $APP_PID
-        echo "✅ Application test completed"
-      shell: bash
-
-    - name: Upload Final Artifact
+    - name: Upload JAR Artifact
       uses: actions/upload-artifact@v4
       with:
         name: school-manager-fullstack
         path: school-manager-multi/backend/target/*.jar
         retention-days: 30
-
-    - name: Build Summary
-      run: |
-        echo " "
-        echo "🎉🎉🎉 BUILD PROCESS COMPLETED SUCCESSFULLY! 🎉🎉🎉"
-        echo "==================================================="
-        echo "📋 Process:"
-        echo "   ✅ 1. Project structure analyzed"
-        echo "   ✅ 2. Maven configuration adapted for Linux"
-        echo "   ✅ 3. Frontend built with Maven"
-        echo "   ✅ 4. Frontend integrated with Spring Boot"
-        echo "   ✅ 5. Full application tested"
-        echo "   ✅ 6. JAR artifact ready for download"
-        echo " "
-        echo "📦 Artifact: school-manager-fullstack.jar"
-        echo "⬇️ Download from: Actions → Latest workflow → Artifacts"
-        echo "🚀 Deployment ready!"
-        echo " "
-      shell: bash
