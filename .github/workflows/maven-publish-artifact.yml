@@ -27,7 +27,7 @@ jobs:
     - name: Setup Node.js for Angular frontend
       uses: actions/setup-node@v4
       with:
-        node-version: '18'
+        node-version: '20'  # Changé de 18 à 20 pour Angular CLI
         cache: 'npm'
         cache-dependency-path: 'school-manager-multi/frontend/package-lock.json'
 
@@ -35,8 +35,17 @@ jobs:
       run: |
         echo "=== Building Angular Frontend ==="
         cd school-manager-multi/frontend
+        
+        # Vérification de la version Node.js
+        echo "Node.js version: $(node --version)"
+        echo "NPM version: $(npm --version)"
+        
+        # Installation des dépendances
         npm ci
+        
+        # Build Angular
         npm run build
+        
         echo "=== Frontend build completed ==="
 
     - name: Set up JDK 21
@@ -52,7 +61,6 @@ jobs:
         cd school-manager-multi
         mvn clean package -pl backend -am -DskipTests=false -Dskip.frontend.build=true
         echo "=== Backend build completed ==="
-        ls -la backend/target/
 
     - name: Run backend tests
       run: |
@@ -63,7 +71,7 @@ jobs:
         SPRING_DATASOURCE_USERNAME: root
         SPRING_DATASOURCE_PASSWORD: ""
 
-    - name: Upload Backend JAR Artifact
+    - name: Upload Backend JAR
       uses: actions/upload-artifact@v4
       with:
         name: school-manager-backend
