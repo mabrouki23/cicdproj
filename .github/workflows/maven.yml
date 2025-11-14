@@ -1,4 +1,4 @@
-name: Build Full Stack Maven Project
+name: Build Full Stack Application
 
 on:
   push:
@@ -24,41 +24,64 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Find Maven project
-      run: |
-        echo "Recherche du projet Maven..."
-        if [ -d "school-manager-multi" ]; then
-          echo "Projet trouvé dans school-manager-multi"
-          cd school-manager-multi
-        elif [ -f "pom.xml" ]; then
-          echo "Projet trouvé à la racine"
-        else
-          echo "Aucun projet Maven trouvé. Structure:"
-          find . -name "pom.xml" -type f
-          exit 1
-        fi
+    - name: Setup Node.js for Angular frontend
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'  # Correspond à votre node.version v18.20.4
+        cache: 'npm'
+        cache-dependency-path: 'school-manager-multi/frontend/package-lock.json'
 
-    - name: Set up JDK 21
+    - name: Build Angular frontend with npm scripts
+      run: |
+        echo "=== Building Angular Frontend ==="
+        cd school-manager-multi/frontend
+        
+        # Installation des dépendances
+        npm ci
+        
+        # Build Angular - utilisez la commande de votre package.json
+        npm run build
+        
+        echo "=== Frontend build completed ==="
+        ls -la dist/
+
+    - name: Set up JDK 21 for Spring Boot backend
       uses: actions/setup-java@v4
       with:
         java-version: '21'
         distribution: 'temurin'
         cache: 'maven'
 
-    - name: Build complete project with Maven
+    - name: Build Spring Boot backend only
       run: |
-        echo "Building from: $(pwd)"
-        mvn clean package -DskipTests=false
+        echo "=== Building Spring Boot Backend ==="
+        cd school-manager-multi
+        
+        # Build seulement le backend en sautant le frontend
+        mvn clean package -pl backend -am -DskipTests=false -Dskip.frontend.build=true
+        
+        echo "=== Backend build completed ==="
+        ls -la backend/target/
+
+    - name: Run backend tests
+      run: |
+        cd school-manager-multi
+        mvn test -pl backend -Dskip.frontend.build=true
       env:
         SPRING_DATASOURCE_URL: jdbc:mysql://localhost:3306/schooldb
         SPRING_DATASOURCE_USERNAME: root
         SPRING_DATASOURCE_PASSWORD: ""
 
-    - name: Upload JAR artifact
+    - name: Upload backend JAR
       uses: actions/upload-artifact@v4
       with:
-        name: application-jar
-        path: |
-          school-manager-multi/target/*.jar
-          target/*.jar
+        name: backend-jar
+        path: school-manager-multi/backend/target/*.jar
+        retention-days: 7
+
+    - name: Upload frontend build
+      uses: actions/upload-artifact@v4
+      with:
+        name: frontend-build
+        path: school-manager-multi/frontend/dist/
         retention-days: 7
