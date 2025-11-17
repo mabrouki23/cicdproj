@@ -1,37 +1,261 @@
-# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
-# More GitHub Actions for Azure: https://github.com/Azure/actions
-
-name: Build and deploy JAR app to Azure Web App - schoolapp
+name: Build Full Stack Application
 
 on:
   push:
-    branches:
-      - main
-  workflow_dispatch:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
-  build:
+  cleanup:
     runs-on: ubuntu-latest
     permissions:
-      contents: read #This is required for actions/checkout
+      actions: write
+    steps:
+    - name: Cleanup previous artifacts
+      uses: actions/github-script@v7
+      with:
+        script: |
+          try {
+            const artifacts = await github.rest.actions.listArtifactsForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            
+            for (const artifact of artifacts.data.artifacts) {
+              if (artifact.name.startsWith('school-manager-')) {
+                console.log(`Deleting artifact: ${artifact.name}`);
+                await github.rest.actions.deleteArtifact({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  artifact_id: artifact.id,
+                });
+              }
+            }
+            console.log('✅ Previous artifacts cleaned up');
+          } catch (error) {
+            console.log('Note: Could not delete artifacts:', error.message);
+          }
+
+  build:
+    runs-on: ubuntu-latest
+    needs: cleanup
+    
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: yes
+          MYSQL_DATABASE: schooldb
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
 
     steps:
-      - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Clean build directories
+      run: |
+        echo "=== CLEANING BUILD DIRECTORIES ==="
+        cd school-manager-multi
+        
+        rm -rf frontend/dist
+        rm -rf frontend/node_modules
+        rm -rf backend/target
+        rm -rf backend/src/main/resources/static
+        
+        echo "✅ Build directories cleaned"
+      shell: bash
 
-      - name: Set up Java version
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'microsoft'
+    - name: Setup Node.js for Angular
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: 'school-manager-multi/frontend/package-lock.json'
 
-      - name: Build with Maven
-        run: mvn clean install
+    - name: Build Angular Frontend
+      run: |
+        echo "=== BUILDING ANGULAR FRONTEND ==="
+        cd school-manager-multi/frontend
+        
+        # Vérifier la configuration Angular
+        echo "📄 Configuration Angular:"
+        cat angular.json | grep -A 10 '"build"'
+        
+        npm ci --no-cache
+        npm run build
+        
+        # Analyse détaillée de la structure de build
+        echo "🔍 ANALYSE DU BUILD ANGULAR:"
+        echo "📁 Structure complète du dossier dist:"
+        find dist/ -type f | sort
+        echo " "
+        echo "📊 Contenu détaillé:"
+        ls -la dist/
+        if [ -d "dist/frontend" ]; then
+          echo "📂 Dossier dist/frontend trouvé:"
+          ls -la dist/frontend/
+        fi
+        if [ -d "dist/browser" ]; then
+          echo "📂 Dossier dist/browser trouvé:"
+          ls -la dist/browser/
+        fi
+      shell: bash
 
-      - name: Upload artifact for deployment job
-        uses: actions/upload-artifact@v4
-        with:
-          name: java-app
-          path: '${{ github.workspace }}/target/*.jar'
+    - name: Debug Angular Build Structure
+      run: |
+        echo "=== DEBUG ANGULAR BUILD STRUCTURE ==="
+        cd school-manager-multi/frontend
+        
+        # Rechercher tous les index.html possibles
+        echo "🔎 Recherche de index.html:"
+        find . -name "index.html" | grep dist
+        
+        # Vérifier la structure exacte
+        echo " "
+        echo "🏗️ Structure arborescente du build:"
+        if [ -d "dist" ]; then
+          tree dist/ || find dist/ -type d | sed 's|[^/]*/|- |g'
+        fi
+      shell: bash
+
+    - name: Copy Angular to Spring Boot
+      run: |
+        echo "=== COPYING ANGULAR TO SPRING BOOT ==="
+        cd school-manager-multi
+        
+        # Préparer le dossier static
+        rm -rf backend/src/main/resources/static
+        mkdir -p backend/src/main/resources/static
+        
+        # STRATÉGIE DE COPIE AMÉLIORÉE
+        echo "🔍 Recherche des fichiers Angular..."
+        
+        # Option 1: Structure standard Angular (nouvelle version)
+        if [ -d "frontend/dist/frontend/browser" ] && [ -f "frontend/dist/frontend/browser/index.html" ]; then
+          echo "📥 Copie depuis: frontend/dist/frontend/browser/"
+          cp -r frontend/dist/frontend/browser/* backend/src/main/resources/static/
+        
+        # Option 2: Structure Angular classique
+        elif [ -d "frontend/dist/browser" ] && [ -f "frontend/dist/browser/index.html" ]; then
+          echo "📥 Copie depuis: frontend/dist/browser/"
+          cp -r frontend/dist/browser/* backend/src/main/resources/static/
+        
+        # Option 3: Structure directe
+        elif [ -d "frontend/dist/frontend" ] && [ -f "frontend/dist/frontend/index.html" ]; then
+          echo "📥 Copie depuis: frontend/dist/frontend/"
+          cp -r frontend/dist/frontend/* backend/src/main/resources/static/
+        
+        # Option 4: Structure racine
+        elif [ -d "frontend/dist" ] && [ -f "frontend/dist/index.html" ]; then
+          echo "📥 Copie depuis: frontend/dist/"
+          cp -r frontend/dist/* backend/src/main/resources/static/
+        
+        # Option 5: Recherche récursive
+        else
+          echo "🔍 Recherche avancée de index.html..."
+          INDEX_PATH=$(find frontend/dist -name "index.html" -type f | head -1)
+          if [ -n "$INDEX_PATH" ]; then
+            INDEX_DIR=$(dirname "$INDEX_PATH")
+            echo "📥 Copie depuis: $INDEX_DIR"
+            cp -r "$INDEX_DIR"/* backend/src/main/resources/static/
+          else
+            echo "❌ ERREUR: Aucun index.html trouvé dans le build Angular!"
+            echo "Structure complète:"
+            find frontend/dist -type f
+            exit 1
+          fi
+        fi
+        
+        # Vérification finale
+        echo " "
+        echo "✅ Copie terminée - VÉRIFICATION:"
+        echo "📁 Contenu du dossier static:"
+        ls -la backend/src/main/resources/static/
+        echo " "
+        echo "📄 Fichiers principaux:"
+        ls -la backend/src/main/resources/static/*.html 2>/dev/null || echo "Aucun fichier HTML trouvé"
+        ls -la backend/src/main/resources/static/*.js 2>/dev/null | head -5
+        ls -la backend/src/main/resources/static/*.css 2>/dev/null | head -5
+      shell: bash
+
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+        cache: 'maven'
+
+    - name: Build Spring Boot Backend
+      run: |
+        echo "=== BUILDING SPRING BOOT BACKEND ==="
+        cd school-manager-multi
+        
+        # Vérifier que les fichiers Angular sont présents
+        echo "🔍 Vérification avant build Maven:"
+        if [ -f "backend/src/main/resources/static/index.html" ]; then
+          echo "🎉 index.html est présent dans static/"
+          echo "Premières lignes de index.html:"
+          head -5 backend/src/main/resources/static/index.html
+        else
+          echo "❌ ERREUR: index.html manquant dans static/"
+          exit 1
+        fi
+        
+        mvn clean package -pl backend -am -DskipTests=false
+        
+        echo "✅ Spring Boot build completed"
+      env:
+        SPRING_DATASOURCE_URL: jdbc:mysql://localhost:3306/schooldb
+        SPRING_DATASOURCE_USERNAME: root
+        SPRING_DATASOURCE_PASSWORD: ""
+      shell: bash
+
+    - name: Verify JAR Content
+      run: |
+        echo "=== VERIFYING JAR CONTENT ==="
+        cd school-manager-multi/backend/target
+        
+        JAR_FILE=$(ls *.jar)
+        echo "📦 JAR: $JAR_FILE"
+        
+        echo "🔍 Recherche des fichiers Angular dans le JAR:"
+        jar tf $JAR_FILE | grep "BOOT-INF/classes/static/" | head -20
+        
+        echo " "
+        echo "✅ Vérification index.html:"
+        if jar tf $JAR_FILE | grep -q "BOOT-INF/classes/static/index.html"; then
+          echo "🎉 INDEX.HTML PRÉSENT DANS LE JAR!"
+        else
+          echo "❌ index.html MANQUANT dans le JAR"
+          echo "Contenu static complet:"
+          jar tf $JAR_FILE | grep "BOOT-INF/classes/static/"
+        fi
+      shell: bash
+
+    - name: Upload Fresh JAR Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: school-manager-fullstack
+        path: school-manager-multi/backend/target/*.jar
+        retention-days: 1
+
+    - name: Final Verification
+      run: |
+        echo " "
+        echo "🎉 BUILD COMPLETED SUCCESSFULLY! 🎉"
+        echo "==================================="
+        echo "✅ Anciens artifacts nettoyés"
+        echo "✅ Build directories nettoyés"
+        echo "✅ Angular buildé avec succès"
+        echo "✅ Fichiers copiés correctement"
+        echo "✅ Spring Boot avec Angular intégré"
+        echo "✅ JAR vérifié et prêt"
+        echo "📦 Nouvel artifact: school-manager-fullstack"
+        echo " "
+      shell: bash
 
   deploy:
     runs-on: ubuntu-latest
@@ -60,4 +284,5 @@ jobs:
           app-name: 'schoolapp'
           slot-name: 'Production'
           package: '*.jar'
+
           
