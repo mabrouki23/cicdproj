@@ -239,7 +239,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: school-manager-fullstack
-        path: school-manager-multi/backend/target/*.jar
+        path: school-manager-multi/backend/target/
         retention-days: 1
 
     - name: Final Verification
@@ -254,6 +254,7 @@ jobs:
         echo "✅ Spring Boot avec Angular intégré"
         echo "✅ JAR vérifié et prêt"
         echo "📦 Nouvel artifact: school-manager-fullstack"
+        echo "📄 Fichier JAR: backend-1.0.0.jar"
         echo " "
       shell: bash
 
@@ -269,14 +270,42 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: school-manager-fullstack
+          path: downloaded-artifact
       
-      - name: Verify downloaded JAR
+      - name: Verify downloaded artifact structure
         run: |
-          echo "🔍 Vérification du JAR téléchargé:"
-          ls -la *.jar
-          echo "📦 Taille du fichier:"
-          du -h *.jar
-          echo "✅ JAR prêt pour le déploiement"
+          echo "🔍 Structure de l'artifact téléchargé:"
+          ls -la downloaded-artifact/
+          echo " "
+          echo "📁 Contenu du dossier:"
+          find downloaded-artifact/ -type f -name "*.jar" | head -10
+          echo " "
+          echo "📦 Fichiers JAR trouvés:"
+          find downloaded-artifact/ -name "*.jar" -exec ls -la {} \;
+      
+      - name: Find and prepare JAR for deployment
+        run: |
+          echo "=== PRÉPARATION DU JAR POUR DÉPLOIEMENT ==="
+          
+          # Trouver le JAR exact
+          JAR_PATH=$(find downloaded-artifact/ -name "backend-*.jar" | head -1)
+          
+          if [ -z "$JAR_PATH" ]; then
+            echo "❌ ERREUR: Aucun fichier backend-*.jar trouvé!"
+            echo "Structure complète:"
+            find downloaded-artifact/ -type f
+            exit 1
+          fi
+          
+          echo "📦 JAR trouvé: $JAR_PATH"
+          echo "🔍 Détails du fichier:"
+          ls -la "$JAR_PATH"
+          
+          # Copier le JAR à la racine pour Azure
+          cp "$JAR_PATH" ./deployment.jar
+          echo "✅ JAR copié comme: deployment.jar"
+          echo "📊 Taille finale:"
+          ls -la deployment.jar
       
       - name: Login to Azure
         uses: azure/login@v2
@@ -291,15 +320,17 @@ jobs:
         with:
           app-name: 'schoolapp'
           slot-name: 'Production'
-          package: '*.jar'
+          package: 'deployment.jar'
           
       - name: Deployment confirmation
         run: |
           echo " "
           echo "🎉 DÉPLOIEMENT RÉUSSI SUR AZURE! 🎉"
           echo "===================================="
-          echo "📱 Application déployée: schoolapp"
+          echo "📱 Application: schoolapp"
           echo "🌐 URL: https://schoolapp.azurewebsites.net"
           echo "⏰ Slot: Production"
           echo "📦 Artifact: school-manager-fullstack"
+          echo "📄 JAR déployé: backend-1.0.0.jar"
+          echo "🕒 Déployé le: $(date)"
           echo " "
