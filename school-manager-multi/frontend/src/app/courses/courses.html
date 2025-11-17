@@ -1,1 +1,82 @@
-<p>courses works!</p>
+<div class="courses-container">
+  <h2 class="mb-4">
+    <i class="bi bi-book"></i> Gestion des Cours
+  </h2>
+
+  <div class="card mb-4">
+    <div class="card-header">
+      <h5>{{ isEditing ? 'Modifier' : 'Ajouter' }} un cours</h5>
+    </div>
+    <div class="card-body">
+      <form (ngSubmit)="saveCourse()">
+        <div class="row">
+          <div class="col-md-6 mb-3">
+            <label class="form-label">Titre</label>
+            <input type="text" class="form-control" [(ngModel)]="course.title" name="title" required>
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label">Description</label>
+            <input type="text" class="form-control" [(ngModel)]="course.description" name="description" required>
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label">Professeur</label>
+            <select class="form-select" [(ngModel)]="course.teacherId" name="teacherId">
+              <option [value]="null">Sélectionner un professeur</option>
+              <option *ngFor="let t of teachers" [value]="t.id">{{ t.firstName }} {{ t.lastName }}</option>
+            </select>
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label">Salle</label>
+            <select class="form-select" [(ngModel)]="course.roomId" name="roomId">
+              <option [value]="null">Sélectionner une salle</option>
+              <option *ngFor="let r of rooms" [value]="r.id">{{ r.name }}</option>
+            </select>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-warning me-2">
+          <i class="bi bi-save"></i> {{ isEditing ? 'Modifier' : 'Ajouter' }}
+        </button>
+        <button type="button" class="btn btn-secondary" (click)="resetForm()" *ngIf="isEditing">
+          <i class="bi bi-x"></i> Annuler
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h5>Liste des cours</h5>
+    </div>
+    <div class="card-body">
+      <table class="table table-striped table-hover">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Titre</th>
+            <th>Description</th>
+            <th>Professeur</th>
+            <th>Salle</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let c of courses">
+            <td>{{ c.id }}</td>
+            <td>{{ c.title }}</td>
+            <td>{{ c.description }}</td>
+            <td>{{ c.teacher?.firstName }} {{ c.teacher?.lastName }}</td>
+            <td>{{ c.room?.name }}</td>
+            <td>
+              <button class="btn btn-sm btn-warning me-2" (click)="editCourse(c)">
+                <i class="bi bi-pencil"></i> Modifier
+              </button>
+              <button class="btn btn-sm btn-danger" (click)="deleteCourse(c.id!)">
+                <i class="bi bi-trash"></i> Supprimer
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>

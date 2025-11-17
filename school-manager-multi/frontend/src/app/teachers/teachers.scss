@@ -1,0 +1,18 @@
+.teachers-container {
+  .btn-success {
+    background-color: #198754;
+    border-color: #198754;
+    
+    &:hover {
+      background-color: #157347;
+      border-color: #146c43;
+    }
+  }
+  
+  .table {
+    th {
+      background-color: #f8f9fa;
+      border-top: none;
+    }
+  }
+}

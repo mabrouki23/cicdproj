@@ -1,14 +1,54 @@
-<nav class="navbar">
-  <ul>
-    <li><a routerLink="/">Home</a></li>
-    <li><a routerLink="/students">Students</a></li>
-    <li><a routerLink="/teachers">Teachers</a></li>
-    <li><a routerLink="/courses">Courses</a></li>
-    <li><a routerLink="/rooms">Rooms</a></li>
-  </ul>
-</nav>
+<div class="home-container">
+  <div class="jumbotron bg-light p-5 rounded">
+    <h1 class="display-4">Bienvenue sur School Manager</h1>
+    <p class="lead">Gérez facilement vos étudiants, professeurs, cours et salles de classe.</p>
+    <hr class="my-4">
+    <p>Commencez par explorer les différentes sections de l'application.</p>
+  </div>
 
-<div class="content">
-  <h2>Welcome to the School Manager</h2>
-  <p>Select a section from the menu above.</p>
+  <div class="row mt-5">
+    <div class="col-md-3 mb-4">
+      <div class="card text-center h-100 shadow-sm">
+        <div class="card-body">
+          <i class="bi bi-people display-1 text-primary"></i>
+          <h5 class="card-title mt-3">Étudiants</h5>
+          <p class="card-text">Gérer les étudiants inscrits</p>
+          <a routerLink="/students" class="btn btn-primary">Voir</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-3 mb-4">
+      <div class="card text-center h-100 shadow-sm">
+        <div class="card-body">
+          <i class="bi bi-person-badge display-1 text-success"></i>
+          <h5 class="card-title mt-3">Professeurs</h5>
+          <p class="card-text">Gérer les professeurs</p>
+          <a routerLink="/teachers" class="btn btn-success">Voir</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-3 mb-4">
+      <div class="card text-center h-100 shadow-sm">
+        <div class="card-body">
+          <i class="bi bi-book display-1 text-warning"></i>
+          <h5 class="card-title mt-3">Cours</h5>
+          <p class="card-text">Gérer les cours disponibles</p>
+          <a routerLink="/courses" class="btn btn-warning">Voir</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-3 mb-4">
+      <div class="card text-center h-100 shadow-sm">
+        <div class="card-body">
+          <i class="bi bi-building display-1 text-danger"></i>
+          <h5 class="card-title mt-3">Salles</h5>
+          <p class="card-text">Gérer les salles de classe</p>
+          <a routerLink="/rooms" class="btn btn-danger">Voir</a>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>

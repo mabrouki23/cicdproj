@@ -1,1 +1,49 @@
-<h1>School Manager Standalone</h1><router-outlet></router-outlet>
+<div class="app-container">
+  <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="#">
+        <i class="bi bi-mortarboard-fill"></i> School Manager
+      </a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav ms-auto">
+          <li class="nav-item">
+            <a class="nav-link" routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">
+              <i class="bi bi-house-door"></i> Accueil
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" routerLink="/students" routerLinkActive="active">
+              <i class="bi bi-people"></i> Étudiants
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" routerLink="/teachers" routerLinkActive="active">
+              <i class="bi bi-person-badge"></i> Professeurs
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" routerLink="/courses" routerLinkActive="active">
+              <i class="bi bi-book"></i> Cours
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" routerLink="/rooms" routerLinkActive="active">
+              <i class="bi bi-building"></i> Salles
+            </a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container my-4">
+    <router-outlet></router-outlet>
+  </main>
+
+  <footer class="bg-dark text-white text-center py-3 mt-5">
+    <p class="mb-0">&copy; 2025 School Manager - Tous droits réservés</p>
+  </footer>
+</div>

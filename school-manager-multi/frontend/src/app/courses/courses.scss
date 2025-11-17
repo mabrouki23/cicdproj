@@ -1,0 +1,17 @@
+.courses-container {
+  .btn-warning {
+    background-color: #ffc107;
+    border-color: #ffc107;
+    color: #000;
+    
+    &:hover {
+      background-color: #ffca2c;
+      border-color: #ffc720;
+    }
+  }
+  
+  .form-select:focus {
+    border-color: #ffc107;
+    box-shadow: 0 0 0 0.2rem rgba(255, 193, 7, 0.25);
+  }
+}

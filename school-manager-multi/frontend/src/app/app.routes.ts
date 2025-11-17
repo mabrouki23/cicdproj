@@ -1,7 +1,7 @@
 import { Routes } from '@angular/router';
 
 export const routes: Routes = [
-	{ path: '', loadComponent: () => import('./home/home').then(m => m.HomeComponent) },
+	{ path: '', loadComponent: () => import('./home/home').then(m => m.Home) },
 	{ path: 'students', loadComponent: () => import('./students/students').then(m => m.Students) },
 	 { path: 'teachers', loadComponent: () => import('./teachers/teachers').then(m => m.Teachers) },
 	 { path: 'courses', loadComponent: () => import('./courses/courses').then(m => m.Courses) },
